@@ -1,8 +1,8 @@
 # Trading Persona Analyzer Configuration
 
 ollama:
-  base_url: "http://localhost:11434"
-  model: "llama2:13b"
+  base_url: "http://192.168.1.14:11434"
+  model: "gpt-oss:20b-32k"
   temperature: 0.7
   top_p: 0.9
   max_tokens: 4096

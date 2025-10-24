@@ -115,7 +115,8 @@ class TradingPatternDetector:
             day_trades = df[df['trade_date'].dt.date == date]
             
             # Extract base symbol (remove CALL/PUT)
-            day_trades['base_symbol'] = day_trades['symbol'].str.extract(r'(\w+)')[0]
+            day_trades = day_trades.copy()  # ensure independent DataFrame
+            day_trades.loc[:, 'base_symbol'] = day_trades['symbol'].str.extract(r'(\w+)')[0]
             
             for base_sym in day_trades['base_symbol'].unique():
                 sym_trades = day_trades[day_trades['base_symbol'] == base_sym]
