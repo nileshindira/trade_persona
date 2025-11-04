@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 import logging
-
+import psycopg2
 
 class TradingDataProcessor:
     """Process and clean trading data from various sources"""
@@ -18,6 +18,77 @@ class TradingDataProcessor:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
+    def getadditionaldata(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Get additional data (scores, highs/lows, etc.) from database and merge with input DataFrame"""
+        try:
+            db_conf = self.config["database"]
+            table_name = db_conf.get("table_name", "stock_data")
+
+            conn = psycopg2.connect(
+                dbname=db_conf["dbname"],
+                user=db_conf["user"],
+                password=db_conf["password"],
+                host=db_conf["host"],
+                port=db_conf.get("port", 5432)
+            )
+
+            # --- Fetch relevant columns from DB ---
+            query = f"""
+                SELECT symbol, date, open, high, low, close, volume,
+                       t_score, f_score, total_score,
+                       is_52week_high, is_52week_low, is_alltime_high, is_alltime_low
+                FROM {table_name};
+            """
+            db_df = pd.read_sql(query, conn)
+            conn.close()
+
+            # Normalize column names
+            db_df.columns = db_df.columns.str.lower()
+
+            # Convert date formats to comparable values
+            db_df["date"] = pd.to_datetime(db_df["date"], errors="coerce").dt.date
+            df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.date
+
+            # --- Preprocess symbols for faster match ---
+            # Extract possible base symbol tokens (first 4 space-separated parts)
+            df_tokens = df["symbol"].str.upper().str.split(" ").apply(lambda x: x[:4] if isinstance(x, list) else [])
+            df = df.assign(
+                token_0=df_tokens.str[0],
+                token_1=df_tokens.str[1],
+                token_2=df_tokens.str[2],
+                token_3=df_tokens.str[3]
+            )
+
+            db_df["symbol"] = db_df["symbol"].str.upper()
+
+            # --- Create index for fast lookup ---
+            db_df.set_index(["symbol", "date"], inplace=True)
+
+            merged_rows = []
+            for i, row in df.iterrows():
+                trade_date = row["trade_date"]
+                candidates = []
+
+                for t in [row.get("token_0"), row.get("token_1"), row.get("token_2"), row.get("token_3")]:
+                    if pd.notna(t) and (t, trade_date) in db_df.index:
+                        candidates.append(db_df.loc[(t, trade_date)])
+                        break
+
+                if candidates:
+                    merged_data = pd.concat([row.to_frame().T.reset_index(drop=True), candidates[0].to_frame().T.reset_index(drop=True)], axis=1)
+                else:
+                    merged_data = row.to_frame().T.reset_index(drop=True)
+
+                merged_rows.append(merged_data)
+
+            final_df = pd.concat(merged_rows, ignore_index=True)
+            final_df.drop(columns=["token_0", "token_1", "token_2", "token_3"], inplace=True, errors="ignore")
+            self.logger.info(f"✅ Added additional DB data to {len(df)} records.")
+            return final_df
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting additional data: {str(e)}")
+            raise
     # =========================================================
     # Data Loading
     # =========================================================
@@ -34,6 +105,7 @@ class TradingDataProcessor:
                 raise ValueError(f"Unsupported source type: {source_type}")
 
             self.logger.info(f"📂 Loaded {len(df)} records from {filepath}")
+            df = self.getadditionaldata(df)
             return df
         except Exception as e:
             self.logger.error(f"❌ Error loading data: {str(e)}")

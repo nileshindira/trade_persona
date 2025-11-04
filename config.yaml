@@ -30,3 +30,10 @@ report:
   output_format: ["html", "json"]
   include_charts: true
   chart_style: "seaborn"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  dbname: "stockdb"

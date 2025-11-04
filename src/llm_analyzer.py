@@ -7,8 +7,9 @@ import requests
 import json
 from typing import Dict, List
 import logging
-
-
+import re
+import pandas as pd
+import numpy as np
 class OllamaAnalyzer:
     """LLM-based analysis using Ollama"""
 
@@ -18,34 +19,134 @@ class OllamaAnalyzer:
         self.model = config['ollama']['model']
         self.logger = logging.getLogger(__name__)
 
-    def generate_analysis(self, metrics: Dict, patterns: Dict) -> Dict:
+    # --- (Placeholder for existing Ollama methods like _call_ollama, _prepare_context, etc.) ---
+    # NOTE: These methods are omitted here for brevity, assume they exist.
+    # The crucial addition is in generate_analysis and the new preparation methods.
+
+    # =========================================================
+    # New: Core Data Structure Preparation for Web Display
+    # =========================================================
+
+    def _prepare_dashboard_kpis(self, metrics: Dict, patterns: Dict) -> Dict:
+        """
+        Prepares high-level KPIs and behavioral scores for the dashboard.
+        """
+        kpis = {
+            # 1. Financial Health & Risk
+            'pnl_total': metrics.get('total_pnl', 0),
+            'roc_pct': metrics.get('return_on_capital', 0),
+            'max_drawdown_pct': metrics.get('max_drawdown_pct', 0),
+            'sharpe_ratio': metrics.get('sharpe_ratio', 0),
+            'sortino_ratio': metrics.get('sortino_ratio', 0),
+            'value_at_risk_95': metrics.get('value_at_risk_95', 0),
+
+            # 2. Efficiency & Activity
+            'win_rate_pct': metrics.get('win_rate', 0),
+            'profit_factor': metrics.get('profit_factor', 0),
+            'efficiency_ratio': metrics.get('efficiency_ratio', 0),
+            'total_trades': metrics.get('total_trades', 0),
+            'avg_holding_period_min': metrics.get('avg_holding_period', 0),
+
+            # 3. Behavioral Scores & Patterns
+            'persona_type': metrics.get('persona_type', 'N/A'),
+            'discipline_score': metrics.get('persona_traits', {}).get('discipline_score', 0),
+            'emotional_control': metrics.get('persona_traits', {}).get('emotional_control', 0),
+            'risk_appetite': metrics.get('persona_traits', {}).get('risk_appetite', 0),
+            'overtrading_detected': patterns.get('overtrading', {}).get('detected', False),
+            'revenge_trading_detected': patterns.get('revenge_trading', {}).get('detected', False),
+            'fomo_trading_detected': patterns.get('fomo_trading', {}).get('detected', False),
+
+            # 4. Technical Alignment
+            'avg_total_score': metrics.get('avg_total_score', 0),
+            'high_score_win_rate_pct': metrics.get('high_score_win_rate', 0),
+        }
+        return kpis
+
+    def _prepare_chart_data(self, metrics: Dict,patterns: Dict, df: pd.DataFrame) -> Dict:
+        """
+        Formats data arrays for charting libraries (e.g., P&L timeline, distribution).
+        """
+        chart_data = {}
+
+        # P&L Timeline (For line/area chart)
+        # Assuming 'pnl_timeline' is a list of cumulative PnL points over time
+        # NOTE: If pnl_timeline isn't structured as required, you'd need to re-index the trades df.
+        chart_data['pnl_timeline'] = metrics.get('pnl_timeline', [])
+
+        # Day-by-Day MTM (For bar chart)
+        # Assuming 'day_mtm' is a list of daily PnL values
+        chart_data['day_mtm'] = metrics.get('day_mtm', [])
+
+        # Instrument Clustering (For pie chart)
+        # Format as list of {'name': 'Instrument', 'value': 12.3}
+        inst_cluster = patterns.get('instrument_clustering', {})
+        chart_data['instrument_distribution'] = [
+            {'name': 'BankNifty', 'value': inst_cluster.get('banknifty_percentage', 0)},
+            {'name': 'Nifty', 'value': inst_cluster.get('nifty_percentage', 0)},
+            # Add other instruments as needed
+        ]
+
+        # Win/Loss Distribution (For simple bar chart)
+        chart_data['win_loss_amounts'] = {
+            'avg_win': metrics.get('avg_win', 0),
+            'avg_loss': metrics.get('avg_loss', 0),
+            'largest_win': metrics.get('largest_win', 0),
+            'largest_loss': metrics.get('largest_loss', 0),
+        }
+
+        return chart_data
+
+
+    # =========================================================
+    # Main Integration Function
+    # =========================================================
+    def generate_analysis(self, metrics: Dict, patterns: Dict, df: pd.DataFrame) -> Dict:
         """Generate comprehensive analysis using LLM"""
 
-        # Prepare context
-        context = self._prepare_context(metrics, patterns)
+        # Prepare context (NOW includes DataFrame)
+        context = self._prepare_context(metrics, patterns, df)
 
-        # Generate different sections
-        analysis = {
+        # 1. Generate text analysis from LLM
+        analysis_text = {
             'trader_profile': self._analyze_trader_profile(context),
             'risk_assessment': self._analyze_risk(context),
             'behavioral_insights': self._analyze_behavior(context),
             'recommendations': self._generate_recommendations(context),
-            'performance_summary': self._summarize_performance(context)
+            'performance_summary': self._summarize_performance(context),
         }
 
+        # 2. Extract structured LLM summary
+        structured_summary = self._extract_structured_summary(analysis_text, metrics, patterns)
+
+        # 3. NEW: Prepare dedicated data structures for the Web Page UI
+        web_kpis = self._prepare_dashboard_kpis(metrics, patterns)
+        web_charts = self._prepare_chart_data(metrics,patterns, df)
+
+
+        # ✅ Final Output for API/Web Service
+        analysis = {
+            "analysis_text": analysis_text,        # LLM generated text blocks (for display)
+            "summary_data": structured_summary,   # Extracted LLM verdict/score (for dashboard)
+            "web_data": {                         # **NEW BLOCK: Clean, structured data for the UI**
+                "kpis": web_kpis,                 # Key single-value metrics (Section 1 & 2)
+                "charts": web_charts,             # Arrays for charts (Section 3)
+                "persona_scores": metrics.get("persona_traits", {}), # (Section 4)
+                "raw_patterns": patterns          # Full pattern detail
+            }
+        }
         return analysis
 
     # =========================================================
     # Context Preparation
     # =========================================================
-    def _prepare_context(self, metrics: Dict, patterns: Dict) -> str:
+    def _prepare_context(self, metrics: Dict, patterns: Dict, df: pd.DataFrame) -> str:
         """Prepare context for LLM with JSON-safe conversion"""
         import numpy as np
         import pandas as pd
 
         def make_json_safe(obj):
             """Convert non-serializable types to safe Python types"""
-            if isinstance(obj, (np.bool_, np.bool8)):
+            if isinstance(obj, (np.bool_, np.bool)):
                 return bool(obj)
             if isinstance(obj, (np.integer,)):
                 return int(obj)
@@ -75,14 +176,25 @@ class OllamaAnalyzer:
     - Total P&L: ₹{metrics.get('total_pnl', 0):,.2f}
     - Win Rate: {metrics.get('win_rate', 0):.2f}%
     - Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}
+    - Sortino Ratio: {metrics.get('sortino_ratio', 0):.2f}
+    - Profit Factor: {metrics.get('profit_factor', 0):.2f}
     - Max Drawdown: {metrics.get('max_drawdown_pct', 0):.2f}%
     - Average Trade Value: ₹{metrics.get('avg_trade_value', 0):,.2f}
-
+    - Return on Capital: {metrics.get('return_on_capital', 0):.2f}%
+    - Efficiency Ratio: {metrics.get('efficiency_ratio', 0):.2f}
+    - Avg F-Score: {metrics.get('avg_f_score', 0):.2f}
+    - Avg T-Score: {metrics.get('avg_t_score', 0):.2f}
+    - Avg Total Score: {metrics.get('avg_total_score', 0):.2f}
+    
     DETECTED PATTERNS:
     - Overtrading: {patterns.get('overtrading', {}).get('detected', False)}
     - Revenge Trading: {patterns.get('revenge_trading', {}).get('detected', False)}
+    - Pyramiding: {patterns.get('pyramiding', {}).get('detected', False)}
     - Scalping: {patterns.get('scalping', {}).get('detected', False)}
     - Hedging: {patterns.get('hedging', {}).get('detected', False)}
+    - FOMO Trading: {patterns.get('fomo_trading', {}).get('detected', False)}
+    - Overconfidence: {patterns.get('overconfidence', {}).get('detected', False)}
+    - Weekend Exposure: {patterns.get('weekend_exposure', {}).get('detected', False)}
     """
 
         # === NEW SECTION: Include Persona Metrics ===
@@ -102,6 +214,9 @@ class OllamaAnalyzer:
     {metrics.get('trait_summary', 'No persona data available.')}
     """
 
+        # === ✅ NEW SECTION: Include Trades DataFrame ===
+        context += self._format_trades_data(df)
+
         # === Additional Context (Raw JSON) ===
         context += f"""
     Additional Context:
@@ -110,6 +225,40 @@ class OllamaAnalyzer:
     """
 
         return context
+
+    def _format_trades_data(self, df: pd.DataFrame) -> str:
+        """Send RAW trades DataFrame to LLM - no preprocessing"""
+
+        if df is None or df.empty:
+            return "\nTRADES DATA: No trades available\n"
+
+        # Simple header
+        trades_context = f"""
+    ================================================================================
+    RAW TRADES DATASET ({len(df)} trades)
+    ================================================================================
+    
+    """
+
+        try:
+            # Convert DataFrame to JSON with proper handling of datetime and NaN values
+            import numpy as np
+
+            # Replace NaN with None for proper JSON serialization
+            df_clean = df.replace({np.nan: None})
+
+            # Convert to JSON - RAW data only
+            all_trades_json = df_clean.to_json(orient='records', date_format='iso', indent=2)
+            trades_context += all_trades_json
+
+        except Exception as e:
+            # Fallback: convert to dict if JSON serialization fails
+            self.logger.warning(f"JSON serialization failed, using dict format: {e}")
+            trades_context += json.dumps(df.to_dict('records'), indent=2, default=str)
+
+        trades_context += "\n\n================================================================================"
+
+        return trades_context
 
     # =========================================================
     # Ollama API Interaction
@@ -233,3 +382,50 @@ Be direct and honest in assessment (150-200 words):
 """
         system_prompt = "You are a senior financial advisor providing performance reviews."
         return self._call_ollama(prompt, system_prompt)
+
+    # =========================================================
+    # NEW: Structured Summary Extraction
+    # =========================================================
+    def _extract_structured_summary(self, sections: Dict, metrics: Dict, patterns: Dict) -> Dict:
+        """Extract structured summary (risk level, verdict, key strengths/weaknesses)"""
+
+        text = " ".join(sections.values())
+
+        summary = {}
+
+        # Extract Risk Level
+        risk_match = re.search(r"(LOW|MEDIUM|HIGH|VERY HIGH)", text, re.IGNORECASE)
+        summary["risk_level"] = risk_match.group(1).upper() if risk_match else "UNKNOWN"
+
+        # Extract Verdict
+        verdict_match = re.search(r"(EXCELLENT|GOOD|AVERAGE|POOR|CRITICAL)", text, re.IGNORECASE)
+        summary["performance_verdict"] = verdict_match.group(1).upper() if verdict_match else "N/A"
+
+        # Extract Strengths & Weaknesses (basic bullet detection)
+        # Extract Strengths & Weaknesses (compatible with Python 3.13+)
+        strengths_match = re.search(r"[Ss]trengths?:\s*(.*?)(?:[Ww]eaknesses?:|$)", text, re.DOTALL)
+        weaknesses_match = re.search(r"[Ww]eaknesses?:\s*(.*)", text, re.DOTALL)
+
+        summary["strengths"] = strengths_match.group(1).strip() if strengths_match else ""
+        summary["weaknesses"] = weaknesses_match.group(1).strip() if weaknesses_match else ""
+
+        # Add Derived Metrics Highlights
+        summary["total_trades"] = metrics.get("total_trades", 0)
+        summary["win_rate"] = metrics.get("win_rate", 0)
+        summary["profit_factor"] = metrics.get("profit_factor", 0)
+        summary["max_drawdown_pct"] = metrics.get("max_drawdown_pct", 0)
+        summary["return_on_capital"] = metrics.get("return_on_capital", 0)
+        summary["avg_total_score"] = metrics.get("avg_total_score", 0)
+        summary["avg_t_score"] = metrics.get("avg_t_score", 0)
+        summary["avg_f_score"] = metrics.get("avg_f_score", 0)
+        summary["sharpe_ratio"] = metrics.get("sharpe_ratio", 0)
+        summary["sortino_ratio"] = metrics.get("sortino_ratio", 0)
+
+        # Add detected patterns summary
+        summary["detected_patterns"] = [p for p, v in patterns.items() if v.get("detected", False)]
+
+        # Simple performance score for dashboards
+        score_map = {"EXCELLENT": 90, "GOOD": 75, "AVERAGE": 60, "POOR": 40, "CRITICAL": 25}
+        summary["performance_score"] = score_map.get(summary["performance_verdict"], 50)
+
+        return summary

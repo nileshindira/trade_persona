@@ -26,9 +26,108 @@ class TradingPatternDetector:
         patterns['hedging'] = self.detect_hedging(df)
         patterns['time_patterns'] = self.detect_time_patterns(df)
         patterns['instrument_clustering'] = self.detect_instrument_clustering(df)
-        
+
+        # 🧠 NEW advanced detections
+        patterns['fomo_trading'] = self.detect_fomo_trading(df)
+        patterns['chasing_losses'] = self.detect_chasing_losses(df)
+        patterns['overconfidence'] = self.detect_overconfidence(df)
+        patterns['weekend_exposure'] = self.detect_weekend_exposure(df)
+
         return patterns
-    
+    # ---------- 🧠 NEW DETECTIONS BELOW ----------
+
+    def detect_fomo_trading(self, df: pd.DataFrame) -> Dict:
+        """
+        Detect FOMO (Fear Of Missing Out) trades:
+        Entering immediately after large price moves or missed opportunities.
+        """
+        if not {'open', 'close', 'trade_date'}.issubset(df.columns):
+            return {'detected': False}
+
+        df = df.sort_values('trade_date')
+        df['price_change'] = ((df['close'] - df['open']) / df['open']) * 100
+
+        large_moves = df['price_change'].abs() > 2.5  # big intraday moves
+        fomo_trades = 0
+
+        for i in range(1, len(df)):
+            if large_moves.iloc[i - 1] and df['transaction_type'].iloc[i] == 'BUY':
+                fomo_trades += 1
+
+        return {
+            'detected': fomo_trades > self.min_trades * 0.2,
+            'fomo_trades': int(fomo_trades),
+            'percentage': float(fomo_trades / len(df) * 100) if len(df) > 0 else 0
+        }
+
+    def detect_chasing_losses(self, df: pd.DataFrame) -> Dict:
+        """
+        Detect if trader increases position size after losses.
+        (A sign of emotional trading or drawdown chasing)
+        """
+        df = df.sort_values('trade_date')
+        chasing_events = 0
+
+        for i in range(1, len(df)):
+            prev = df.iloc[i - 1]
+            curr = df.iloc[i]
+            if prev['pnl'] < 0 and curr['quantity'] > prev['quantity']:
+                chasing_events += 1
+
+        return {
+            'detected': chasing_events > self.min_trades * 0.3,
+            'count': int(chasing_events),
+            'percentage': float(chasing_events / len(df) * 100) if len(df) > 0 else 0
+        }
+
+    def detect_overconfidence(self, df: pd.DataFrame) -> Dict:
+        """
+        Detect overconfidence after winning streaks.
+        (Increased position size or risk-taking after consecutive wins)
+        """
+        df = df.sort_values('trade_date')
+        win_streak = 0
+        overconf_trades = 0
+
+        for i in range(1, len(df)):
+            if df.iloc[i - 1]['pnl'] > 0:
+                win_streak += 1
+                if win_streak >= 3 and df.iloc[i]['quantity'] > df.iloc[i - 1]['quantity']:
+                    overconf_trades += 1
+            else:
+                win_streak = 0
+
+        return {
+            'detected': overconf_trades > self.min_trades * 0.2,
+            'overconf_trades': int(overconf_trades),
+            'percentage': float(overconf_trades / len(df) * 100) if len(df) > 0 else 0
+        }
+
+    def detect_weekend_exposure(self, df: pd.DataFrame) -> Dict:
+        """
+        Detect trades or positions held over the weekend (Friday → Monday).
+        High-risk exposure pattern.
+        """
+        df = df.sort_values('trade_date')
+        weekend_holds = 0
+
+        df['trade_day'] = df['trade_date'].dt.day_name()
+        friday_trades = df[df['trade_day'] == 'Friday']
+
+        for _, friday_trade in friday_trades.iterrows():
+            monday_trades = df[
+                (df['symbol'] == friday_trade['symbol']) &
+                (df['trade_date'] > friday_trade['trade_date']) &
+                (df['trade_date'] - friday_trade['trade_date']).dt.days <= 3
+            ]
+            if not monday_trades.empty:
+                weekend_holds += 1
+
+        return {
+            'detected': weekend_holds > self.min_trades * 0.1,
+            'weekend_positions': int(weekend_holds),
+            'percentage': float(weekend_holds / len(df) * 100) if len(df) > 0 else 0
+        }
     def detect_overtrading(self, df: pd.DataFrame) -> Dict:
         """Detect overtrading behavior"""
         daily_trades = df.groupby(df['trade_date'].dt.date).size()

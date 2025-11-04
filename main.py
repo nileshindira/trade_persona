@@ -98,7 +98,7 @@ class TradingPersonaAnalyzer:
 
         # Step 4: LLM Analysis
         logger.info("Generating AI analysis...")
-        analysis = self.llm_analyzer.generate_analysis(metrics, patterns)
+        analysis = self.llm_analyzer.generate_analysis(metrics, patterns, df)
 
         # Step 5: Generate report
         logger.info("Generating report...")

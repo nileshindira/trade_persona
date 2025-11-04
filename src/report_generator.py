@@ -15,18 +15,28 @@ import numpy as np
 class ReportGenerator:
     """Generate polished HTML/JSON trading persona reports with visualization"""
 
-    def __init__(self, config: Dict):
-        self.config = config
+    def __init__(self, config: Dict = None):
+        self.config = config or {}
 
     # ---------------------------------------------------------------------
     # MAIN REPORT BUILD
     # ---------------------------------------------------------------------
     def generate_report(self, metrics: Dict, patterns: Dict, analysis: Dict, trader_name: str = "Trader") -> Dict:
-        """Compose structured report dictionary"""
-        analysis_html = {
-            key: markdown.markdown(analysis.get(key, ""), extensions=["tables", "fenced_code", "nl2br"])
-            for key in ["trader_profile", "risk_assessment", "behavioral_insights", "performance_summary"]
-        }
+        """Compose structured report dictionary with ALL data"""
+
+        # Extract all components from analysis
+        analysis_text = analysis.get('analysis_text', {})
+        summary_data = analysis.get('summary_data', {})
+        web_data = analysis.get('web_data', {})
+
+        # Convert markdown for text analysis
+        analysis_html = {}
+        if analysis_text:
+            for key, value in analysis_text.items():
+                if isinstance(value, str):
+                    analysis_html[key] = markdown.markdown(value, extensions=["tables", "fenced_code", "nl2br"])
+                else:
+                    analysis_html[key] = value
 
         return {
             "metadata": {
@@ -34,26 +44,32 @@ class ReportGenerator:
                 "trader_name": trader_name,
                 "analysis_period": metrics.get("date_range", "N/A"),
             },
-            "executive_summary": self._create_executive_summary(metrics, analysis),
+            "executive_summary": self._create_executive_summary(metrics, summary_data),
             "detailed_metrics": metrics,
+            "summary_data": summary_data,
+            "web_data": web_data,
+            "analysis_text": analysis_text,
             "detected_patterns": patterns,
+            "raw_patterns": patterns,
             "ai_analysis": analysis_html,
-            "recommendations": self._format_recommendations(analysis.get("recommendations", "")),
+            "recommendations": self._format_recommendations(analysis_text.get("recommendations", "")),
             "risk_score": self._calculate_risk_score(metrics, patterns),
+            "all_kpis": web_data.get("kpis", {}),
+            "persona_scores": web_data.get("persona_scores", {}),
+            "charts_data": web_data.get("charts", {}),
         }
 
-    # ---------------------------------------------------------------------
-    # SUB-HELPERS
-    # ---------------------------------------------------------------------
-    def _create_executive_summary(self, metrics: Dict, analysis: Dict) -> Dict:
+    def _create_executive_summary(self, metrics: Dict, summary_data: Dict) -> Dict:
         return {
-            "total_trades": metrics.get("total_trades", 0),
+            "total_trades": summary_data.get("total_trades", metrics.get("total_trades", 0)),
             "net_pnl": metrics.get("total_pnl_combined", metrics.get("total_pnl", 0)),
-            "win_rate": metrics.get("win_rate", 0),
-            "sharpe_ratio": metrics.get("sharpe_ratio", 0),
-            "risk_level": self._get_risk_level(metrics),
+            "win_rate": summary_data.get("win_rate", metrics.get("win_rate", 0)),
+            "sharpe_ratio": summary_data.get("sharpe_ratio", metrics.get("sharpe_ratio", 0)),
+            "risk_level": summary_data.get("risk_level", self._get_risk_level(metrics)),
             "day_mtm": metrics.get("day_mtm", 0),
             "open_positions_count": metrics.get("open_positions_count", 0),
+            "profit_factor": summary_data.get("profit_factor", metrics.get("profit_factor", 0)),
+            "max_drawdown_pct": summary_data.get("max_drawdown_pct", metrics.get("max_drawdown_pct", 0)),
         }
 
     def _get_risk_level(self, metrics: Dict) -> str:
@@ -68,8 +84,10 @@ class ReportGenerator:
         return "LOW"
 
     def _format_recommendations(self, text: str) -> List[str]:
-        lines = [l.strip("-•* ").capitalize() for l in text.splitlines() if l.strip()]
-        return lines[:15]
+        if not text:
+            return []
+        lines = [l.strip("-•* ").strip() for l in text.splitlines() if l.strip() and len(l.strip()) > 10]
+        return lines[:30]  # Increased to show more recommendations
 
     def _calculate_risk_score(self, metrics: Dict, patterns: Dict) -> int:
         score = 50
@@ -85,29 +103,11 @@ class ReportGenerator:
             score += 10
         return min(100, score)
 
-    # ---------------------------------------------------------------------
-    # EXPORT HTML (with full visuals)
-    # ---------------------------------------------------------------------
     def export_html(self, report: dict, filepath: str):
-        """Render an interactive, psychology‑aware trading dashboard (HTML)
-
-        Highlights
-        - Bootstrap 5 layout with sticky KPI bar
-        - Light/Dark theme toggle + print stylesheet
-        - Chart.js visuals: P&L timeline, persona radar, winners/losers bars,
-          hourly/weekday activity, drawdown curve, allocation donut (if available)
-        - DataTable with search/sort for open positions
-        - Recommendation carousel (auto‑scroll, dock hover)
-        - Behavioral nudges with emojis & badges
-        - JSON export & section deep‑links (hash routing)
-        - Graceful guards when data keys are missing
-        """
-        import numpy as np
-        from pathlib import Path
-        from jinja2 import Template
-        import json
+        """Render comprehensive interactive trading dashboard with ALL metrics and data displayed"""
 
         def safe(o):
+            """Convert numpy types and other non-JSON-serializable types"""
             if isinstance(o, dict):
                 return {k: safe(v) for k, v in o.items()}
             if isinstance(o, list):
@@ -126,186 +126,1004 @@ class ReportGenerator:
         <head>
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
-        <title>Trading Persona Report — {{ (report.metadata.trader_name or 'Trader') }}</title>
+        <title>Complete Trading Analysis Report — {{ (report.metadata.trader_name or 'Trader') }}</title>
 
         <!-- CDN Imports -->
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
-        <link href="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.4/dist/style.css" rel="stylesheet"/>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+        
         {% raw %}
         <style>
         :root{
-          /* Semantic color system tuned for clean light/dark parity */
           --primary:#0d6efd; --primary-weak:#93c5fd;
-          --accent:#10b981; --accent-weak:#a7f3d0;
-          --danger:#ef4444; --warn:#f59e0b; --ok:#22c55e;
+          --accent:#10b981; --danger:#ef4444; --warn:#f59e0b; --ok:#22c55e;
           --bg-light:#f8fafc; --card-light:#ffffff; --text-light:#0f172a; --muted-light:#64748b;
           --bg-dark:#0b1120; --card-dark:#111827; --text-dark:#e5e7eb; --muted-dark:#94a3b8;
           --shadow:0 6px 24px rgba(0,0,0,.08);
+          --shadow-hover:0 12px 32px rgba(0,0,0,.12);
         }
         [data-theme="light"]{--bg:var(--bg-light);--card:var(--card-light);--text:var(--text-light);--muted:var(--muted-light);}
         [data-theme="dark"]{--bg:var(--bg-dark);--card:var(--card-dark);--text:var(--text-dark);--muted:var(--muted-dark);}
-        html,body{height:100%}
-        body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-        .card{border:0;border-radius:1rem;background:var(--card);box-shadow:var(--shadow)}
-        .section-title{font-weight:800;color:var(--primary);margin-top:2rem}
-        .table thead th{white-space:nowrap}
-        .nav-tabs .nav-link{border:0}
-        .nav-tabs .nav-link.active{background:var(--primary);color:#fff;border-radius:.75rem}
-        .nav-pills .nav-link{border-radius:999px}
-        .kpi{min-width:160px}
-        .kpi h5{font-weight:800}
-        .badge-pill{border-radius:999px;padding:.4rem .75rem}
-        .scroll-y{max-height:280px;overflow:auto}
-        .small-muted{color:var(--muted)}
-        .hr-soft{border-top:1px dashed rgba(127,127,127,.35)}
-        a{color:var(--primary)}
-        [data-theme="dark"] a{color:var(--primary-weak)}
-        .reco-card{border-left:6px solid var(--primary);background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))}
-        [data-theme="dark"] .reco-card{background:linear-gradient(135deg,rgba(96,165,250,.12),rgba(52,211,153,.10))}
-        @media print{#topbar,.no-print{display:none!important}.card{box-shadow:none}}
-        /* Tables: align right for numbers */
+        
+        *{box-sizing:border-box}
+        html,body{height:100%;margin:0;padding:0}
+        body{
+          background:var(--bg);
+          color:var(--text);
+          font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+          line-height:1.6;
+          transition:background .3s ease,color .3s ease
+        }
+        
+        .card{
+          border:0;
+          border-radius:1.25rem;
+          background:var(--card);
+          box-shadow:var(--shadow);
+          transition:transform .3s ease,box-shadow .3s ease
+        }
+        .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+        
+        .section-title{
+          font-weight:800;
+          color:var(--primary);
+          margin-top:2.5rem;
+          margin-bottom:1.5rem;
+          font-size:1.75rem;
+          display:flex;
+          align-items:center;
+          gap:.75rem
+        }
+        
+        .metric-card{
+          background:linear-gradient(135deg,rgba(13,110,253,.05),rgba(16,185,129,.05));
+          border-left:4px solid var(--primary);
+          padding:1.5rem;
+          border-radius:1rem;
+          transition:all .3s ease;
+          height:100%
+        }
+        .metric-card:hover{border-left-width:6px;padding-left:calc(1.5rem - 2px)}
+        
+        .metric-label{
+          font-size:.875rem;
+          color:var(--muted);
+          font-weight:600;
+          text-transform:uppercase;
+          letter-spacing:.05em;
+          margin-bottom:.5rem
+        }
+        
+        .metric-value{
+          font-size:2rem;
+          font-weight:800;
+          line-height:1;
+          color:var(--text)
+        }
+        .metric-subtext{
+          font-size:.8rem;
+          color:var(--muted);
+          margin-top:.25rem
+        }
+        
+        .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-bottom:2rem}
+        
+        .kpi{min-width:160px;text-align:center}
+        .kpi h5{font-weight:800;margin:.5rem 0}
+        
+        .badge-pill{border-radius:999px;padding:.5rem 1rem;font-weight:600}
+        .badge-gradient{
+          background:linear-gradient(135deg,var(--primary),var(--accent));
+          color:white
+        }
+        
+        .data-table{
+          width:100%;
+          border-collapse:collapse;
+        }
+        .table thead th{
+          white-space:nowrap;
+          background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08));
+          font-weight:700;
+          text-transform:uppercase;
+          font-size:.85rem;
+          letter-spacing:.05em
+        }
+        .data-table th{
+          background:rgba(13,110,253,.08);
+          padding:12px;
+          text-align:left;
+          font-weight:600;
+        }
+       .table-hover tbody tr:hover{background:rgba(13,110,253,.05)}
+        
+        .nav-tabs .nav-link{
+          border:0;
+          font-weight:600;
+          transition:all .3s ease
+        }
+        .nav-tabs .nav-link.active{
+          background:var(--primary);
+          color:#fff;
+          border-radius:.75rem;
+          transform:translateY(-2px)
+        }
+        .nav-tabs .nav-link:not(.active):hover{
+          background:rgba(13,110,253,.1);
+          border-radius:.75rem
+        }
+        
+        .scroll-y{max-height:320px;overflow:auto}
+        .scroll-y::-webkit-scrollbar{width:8px}
+        .scroll-y::-webkit-scrollbar-track{background:rgba(127,127,127,.1);border-radius:10px}
+        .scroll-y::-webkit-scrollbar-thumb{background:var(--primary);border-radius:10px}
+        
+        .small-muted{color:var(--muted);font-size:.875rem}
+        .hr-soft{border-top:2px dashed rgba(127,127,127,.2);margin:1.5rem 0}        
+        .data-table td{
+          padding:10px;
+          border-bottom:1px solid rgba(0,0,0,.05);
+        }
+        a{color:var(--primary);text-decoration:none;transition:color .3s ease}
+        a:hover{color:var(--accent);text-decoration:underline}
+        
+        .reco-card{
+          border-left:6px solid var(--primary);
+          background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08));
+          transition:all .3s ease
+        }
+        .reco-card:hover{
+          border-left-width:8px;
+          background:linear-gradient(135deg,rgba(13,110,253,.12),rgba(16,185,129,.12))
+        }        
+        .json-view{
+          background:#f4f4f4;
+          padding:1rem;
+          border-radius:8px;
+          font-family:monospace;
+          font-size:0.9rem;
+          max-height:400px;
+          overflow:auto;
+        }
+        
+        .pattern-badge{
+          display:inline-flex;
+          align-items:center;
+          gap:.5rem;
+          padding:.5rem 1rem;
+          border-radius:999px;
+          font-weight:600;
+          font-size:.875rem;
+          margin:.25rem;
+          transition:transform .2s ease
+        }
+        .pattern-badge:hover{transform:scale(1.05)}
+        .pattern-detected{background:linear-gradient(135deg,#ef4444,#dc2626);color:white}
+        .pattern-ok{background:linear-gradient(135deg,#22c55e,#16a34a);color:white}
+        
+        .progress-custom{
+          height:1.5rem;
+          border-radius:999px;
+          background:rgba(127,127,127,.1);
+          overflow:hidden
+        }
+        .progress-bar-custom{
+          height:100%;
+          border-radius:999px;
+          transition:width .6s ease;
+          background:linear-gradient(90deg,var(--primary),var(--accent))
+        }
+        
+        .pattern-detected{
+          background:linear-gradient(135deg,#ef4444,#dc2626);
+          color:white;
+        }
+        
+        .tab-content{
+          padding:1.5rem 0;
+        }
+        
+        pre{
+          background:#f8f8f8;
+          padding:1rem;
+          border-radius:8px;
+          overflow-x:auto;
+        }
+        
+        .text-success{color:#22c55e!important}
+        .text-danger{color:#ef4444!important}
+        .text-warning{color:#f59e0b!important}
+        .text-info{color:#0d6efd!important}
+
+        @media print{
+          #topbar,.no-print{display:none!important}
+          .card{box-shadow:none;page-break-inside:avoid}
+          body{background:white;color:black}
+        }
+        
+        @media (max-width:768px){
+          .section-title{font-size:1.5rem}
+          .metric-value{font-size:1.5rem}
+          .stat-grid{grid-template-columns:1fr}
+        }
+        
         td.text-end,th.text-end{text-align:right}
+        
+        .chart-wrapper{
+          position:relative;
+          padding:1rem;
+          background:var(--card);
+          border-radius:1rem;
+          min-height:300px
+        }
+        
+        .gradient-bg-primary{background:linear-gradient(135deg,rgba(13,110,253,.1),rgba(16,185,129,.1))}
+        .gradient-bg-danger{background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(220,38,38,.1))}
+        .gradient-bg-success{background:linear-gradient(135deg,rgba(34,197,94,.1),rgba(22,163,74,.1))}
+
+
         </style>
         {% endraw %}
         </head>
 
         <body>
-        <!-- Navbar -->
-        <nav id="topbar" class="navbar navbar-expand-lg sticky-top" style="background:var(--card);box-shadow:var(--shadow)">
-          <div class="container-xl py-2">
-            <a class="navbar-brand fw-bold" href="#"><i class="bi bi-graph-up-arrow text-primary"></i> Trading Persona Report</a>
-            <div class="d-flex gap-2">
-              <button class="btn btn-outline-secondary btn-sm" id="themeToggle" title="Toggle theme"><i class="bi bi-moon"></i></button>
-              <button class="btn btn-outline-primary btn-sm" onclick="window.print()" title="Print"><i class="bi bi-printer"></i></button>
-              <button class="btn btn-outline-success btn-sm" id="jsonBtn" title="Download JSON"><i class="bi bi-download"></i></button>
+        <div class="container-xl py-4">
+          
+          <!-- HEADER -->
+          <div class="card p-4" style="background:linear-gradient(135deg,var(--primary),var(--accent));color:white">
+            <h1 class="mb-3">📊 Complete Trading Analysis Report</h1>
+            <div class="row">
+              <div class="col-md-3">
+                <strong>Trader:</strong> {{ report.metadata.trader_name or 'N/A' }}
+              </div>
+              <div class="col-md-3">
+                <strong>Period:</strong> {{ report.metadata.analysis_period or 'N/A' }}
+              </div>
+              <div class="col-md-3">
+                <strong>Generated:</strong> {{ report.metadata.generated_at or 'N/A' }}
+              </div>
+              <div class="col-md-3">
+                <strong>Risk Score:</strong> {{ report.risk_score or 0 }}/100
+              </div>
             </div>
           </div>
-        </nav>
 
-        <div class="container-xl my-4">
+          <!-- EXECUTIVE SUMMARY -->
+          <section>
+            <h2 class="section-title">📈 Executive Summary</h2>
+            <div class="card p-4">
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Total Trades</div>
+                  <div class="metric-value">{{ report.executive_summary.total_trades or 0 }}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Net P&L</div>
+                  <div class="metric-value {{ 'text-success' if (report.executive_summary.net_pnl or 0)>=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.executive_summary.net_pnl or 0) }}
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Win Rate</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.win_rate or 0) }}%</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Sharpe Ratio</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.sharpe_ratio or 0) }}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Profit Factor</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.profit_factor or 0) }}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Max Drawdown</div>
+                  <div class="metric-value text-danger">{{ '%.2f'|format(report.executive_summary.max_drawdown_pct or 0) }}%</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Risk Level</div>
+                  <div class="metric-value">
+                    <span class="badge {% if report.executive_summary.risk_level == 'VERY HIGH' %}bg-danger{% elif report.executive_summary.risk_level == 'HIGH' %}bg-warning{% else %}bg-success{% endif %}" style="font-size:1.2rem">
+                      {{ report.executive_summary.risk_level or 'N/A' }}
+                    </span>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Open Positions</div>
+                  <div class="metric-value">{{ report.executive_summary.open_positions_count or 0 }}</div>
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <!-- ===== TRADER OVERVIEW (INTRO WITH TAGS) ===== -->
-          <section id="overview">
-            <div class="card p-4 mb-4">
-              <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                <div>
-                  <div class="d-flex align-items-center gap-3">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:52px;height:52px;background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;font-weight:800;">
-                      {{ (report.metadata.trader_name or 'T')[:1]|upper }}
-                    </div>
-                    <div>
-                      <h3 class="fw-bold mb-1">{{ report.metadata.trader_name or 'Trader' }}</h3>
-                      <div class="small-muted">
-                        Period: {{ report.metadata.analysis_period or '—' }} • Generated: {{ report.metadata.generated_at or '—' }}
-                      </div>
-                      <div class="mt-2 d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary">{{ report.detailed_metrics.persona_type or 'Persona: N/A' }}</span>
-                        <span class="badge bg-info text-dark">Risk: {{ report.executive_summary.risk_level or 'N/A' }}</span>
-                        <span class="badge bg-success">Sharpe: {{ '%.2f'|format((report.executive_summary.sharpe_ratio or 0)) }}</span>
-                        {% if report.detailed_metrics.avg_holding_period %}
-                          <span class="badge bg-secondary">Avg Hold: {{ '%.1f'|format(report.detailed_metrics.avg_holding_period) }} min</span>
-                        {% endif %}
-                        {% if report.detailed_metrics.open_positions_count is defined %}
-                          <span class="badge bg-secondary">Open Symbols: {{ report.detailed_metrics.open_positions_count }}</span>
-                        {% endif %}
-                      </div>
+          <!-- WEB DATA SECTION -->
+          {% if report.web_data %}
+          <section>
+            <h2 class="section-title">🌐 Web Data Analysis</h2>
+            
+            <!-- KPIs from web_data -->
+            {% if report.web_data.kpis %}
+            <div class="card p-4">
+              <h4 class="mb-3">Key Performance Indicators</h4>
+              <div class="stat-grid">
+                {% for key, value in report.web_data.kpis.items() %}
+                <div class="metric-card">
+                  <div class="metric-label">{{ key.replace('_', ' ').title() }}</div>
+                  <div class="metric-value">
+                    {% if value is number %}
+                      {{ '%.2f'|format(value) }}
+                    {% else %}
+                      {{ value }}
+                    {% endif %}
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Charts Data -->
+            {% if report.web_data.charts %}
+            <div class="card p-4">
+              <h4 class="mb-3">Chart Data</h4>
+              
+              <!-- P&L Timeline -->
+              {% if report.web_data.charts.pnl_timeline %}
+              <div class="mb-4">
+                <h5>P&L Timeline</h5>
+                <div class="chart-container" style="height: 300px; position: relative;">
+
+                <canvas id="pnlTimelineChart" height="300"></canvas>
+                </div>            
+              </div>
+              {% endif %}
+
+              <!-- Win/Loss Amounts -->
+              {% if report.web_data.charts.win_loss_amounts %}
+              <div class="row mb-4">
+                <div class="col-md-6">
+                  <div class="metric-card">
+                    <div class="metric-label">Average Win</div>
+                    <div class="metric-value text-success">₹{{ '%.2f'|format(report.web_data.charts.win_loss_amounts.avg_win or 0) }}</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="metric-card">
+                    <div class="metric-label">Average Loss</div>
+                    <div class="metric-value text-danger">₹{{ '%.2f'|format(report.web_data.charts.win_loss_amounts.avg_loss or 0) }}</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="metric-card">
+                    <div class="metric-label">Largest Win</div>
+                    <div class="metric-value text-success">₹{{ '%.2f'|format(report.web_data.charts.win_loss_amounts.largest_win or 0) }}</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="metric-card">
+                    <div class="metric-label">Largest Loss</div>
+                    <div class="metric-value text-danger">₹{{ '%.2f'|format(report.web_data.charts.win_loss_amounts.largest_loss or 0) }}</div>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Instrument Distribution -->
+              {% if report.web_data.charts.instrument_distribution %}
+              <div class="mb-4">
+                <h5>Instrument Distribution</h5>
+                  <div class="pie-chart-container" style="height: 250px; position: relative;">
+
+                <canvas id="instrumentChart" height="200"></canvas>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Persona Scores -->
+            {% if report.web_data.persona_scores %}
+            <div class="card p-4">
+              <h4 class="mb-3">Trading Persona Scores</h4>
+              <div class="row">
+                <div class="col-md-6">
+                  <canvas id="personaRadarChart" height="300"></canvas>
+                </div>
+                <div class="col-md-6">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Trait</th>
+                        <th>Score</th>
+                        <th>Visual</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for trait, score in report.web_data.persona_scores.items() %}
+                      <tr>
+                        <td><strong>{{ trait.replace('_', ' ').title() }}</strong></td>
+                        <td>{{ '%.2f'|format(score * 100) }}%</td>
+                        <td>
+                          <div class="progress" style="height:20px">
+                            <div class="progress-bar" style="width:{{ score * 100 }}%;background:linear-gradient(90deg,var(--primary),var(--accent))"></div>
+                          </div>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            <!-- Raw Patterns -->
+            {% if report.web_data.raw_patterns %}
+            <div class="card p-4">
+              <h4 class="mb-3">Detailed Pattern Analysis</h4>
+              <div class="accordion" id="patternsAccordion">
+                {% for pattern_name, pattern_data in report.web_data.raw_patterns.items() %}
+                <div class="accordion-item">
+                  <h2 class="accordion-header">
+                    <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#pattern{{ loop.index }}">
+                      {{ pattern_name.replace('_', ' ').title() }}
+                      {% if pattern_data.detected %}
+                        <span class="badge bg-danger ms-2">Detected</span>
+                      {% endif %}
+                    </button>
+                  </h2>
+                  <div id="pattern{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                    <div class="accordion-body">
+                      <table class="data-table">
+                        <tbody>
+                          {% for key, value in pattern_data.items() %}
+                          <tr>
+                            <td width="30%"><strong>{{ key.replace('_', ' ').title() }}:</strong></td>
+                            <td>
+                              {% if value is mapping %}
+                                <pre>{{ value|tojson(indent=2) }}</pre>
+                              {% elif value is iterable and value is not string %}
+                                {{ value|join(', ') }}
+                              {% else %}
+                                {{ value }}
+                              {% endif %}
+                            </td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
-                <div class="text-end">
-                  {% set pnl_intro = report.executive_summary.net_pnl or 0 %}
-                  <div class="fs-1 fw-bold {{ 'text-success' if pnl_intro>=0 else 'text-danger' }}">₹{{ '%.2f'|format(pnl_intro) }}</div>
-                  <div class="small-muted">Total P&L</div>
-                </div>
-              </div>
-
-              <hr class="hr-soft">
-              <div class="row text-center g-3">
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Trades</div><h5>{{ report.executive_summary.total_trades or 0 }}</h5></div></div>
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Win Rate</div><h5>{{ '%.1f'|format(report.executive_summary.win_rate or 0) }}%</h5></div></div>
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Day MTM</div><h5>{{ '%.2f'|format(report.executive_summary.day_mtm or 0) }}</h5></div></div>
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Open Pos</div><h5>{{ report.executive_summary.open_positions_count or 0 }}</h5></div></div>
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Sharpe</div><h5>{{ '%.2f'|format(report.executive_summary.sharpe_ratio or 0) }}</h5></div></div>
-                <div class="col-6 col-md-2"><div class="kpi"><div class="small-muted">Risk</div><h5>{{ report.executive_summary.risk_level or '—' }}</h5></div></div>
+                {% endfor %}
               </div>
             </div>
-          </section>
-
-          <!-- ===== SNAPSHOT SUMMARY (OPEN/CLOSED/PNL/MTM) ===== -->
-          <section id="snapshot">
-            <h4 class="section-title"><i class="bi bi-speedometer2"></i> Snapshot Summary</h4>
-            {% set dm = report.detailed_metrics %}
-            <div class="row g-3 mb-3">
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">Investment</div><h5>₹{{ '%.2f'|format(dm.total_investment_value_open or 0) }}</h5></div></div>
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">Realized</div><h5 class="{{ 'text-success' if (dm.total_realized_pnl or 0) >=0 else 'text-danger' }}">₹{{ '%.2f'|format(dm.total_realized_pnl or 0) }}</h5></div></div>
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">Unrealized</div><h5 class="{{ 'text-success' if (dm.total_unrealized_pnl or 0) >=0 else 'text-danger' }}">₹{{ '%.2f'|format(dm.total_unrealized_pnl or 0) }}</h5></div></div>
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">Total P&L</div><h5 class="{{ 'text-success' if (dm.total_pnl_combined or 0) >=0 else 'text-danger' }}">₹{{ '%.2f'|format(dm.total_pnl_combined or 0) }}</h5></div></div>
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">ROI %</div><h5>{{ '%.2f'|format(((dm.total_pnl_combined or 0)/((dm.total_investment_value_open or 0) if (dm.total_investment_value_open or 0)!=0 else 1)*100)) }}%</h5></div></div>
-              <div class="col-md-2"><div class="card p-3 text-center"><div class="small-muted">Booked SL %</div><h5>{{ '%.1f'|format(dm.close_pos_booked_sl_pct or 0) }}%</h5></div></div>
-            </div>
-            {% if dm.pnl_timeline and dm.pnl_timeline.dates %}
-              <div class="card p-3 mb-4">
-                <small class="small-muted">Equity Curve</small>
-                <canvas id="pnlTimeline" height="160"></canvas>
-              </div>
             {% endif %}
           </section>
+          {% endif %}
 
-          <!-- ===== POSITIONS: OPEN / CLOSED TABS ===== -->
+          <!-- SUMMARY DATA SECTION -->
+          {% if report.summary_data %}
+          <section>
+            <h2 class="section-title">📊 Summary Statistics</h2>
+            <div class="card p-4">
+              <div class="row">
+                <div class="col-md-6">
+                  <h5 class="mb-3">Performance Metrics</h5>
+                  <table class="data-table">
+                    <tbody>
+                      {% for key, value in report.summary_data.items() %}
+                      {% if key not in ['detected_patterns', 'strengths', 'weaknesses'] %}
+                      <tr>
+                        <td><strong>{{ key.replace('_', ' ').title() }}:</strong></td>
+                        <td>
+                          {% if value is number %}
+                            {{ '%.2f'|format(value) }}
+                          {% else %}
+                            {{ value }}
+                          {% endif %}
+                        </td>
+                      </tr>
+                      {% endif %}
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="col-md-6">
+                  {% if report.summary_data.strengths or report.summary_data.weaknesses %}
+                  <h5 class="mb-3">Strengths & Weaknesses</h5>
+                  {% if report.summary_data.strengths %}
+                  <div class="alert alert-success">
+                    <h6>Strengths:</h6>
+                    <p>{{ report.summary_data.strengths }}</p>
+                  </div>
+                  {% endif %}
+                  {% if report.summary_data.weaknesses %}
+                  <div class="alert alert-danger">
+                    <h6>Weaknesses:</h6>
+                    <p>{{ report.summary_data.weaknesses }}</p>
+                  </div>
+                  {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+
+
+          <!-- ===== COMPREHENSIVE METRICS DASHBOARD ===== -->
+          <section id="metrics">
+            <h4 class="section-title"><i class="bi bi-clipboard-data"></i> Comprehensive Metrics Dashboard</h4>
+            
+            {% set dm = report.detailed_metrics %}
+            
+            <!-- Performance Metrics -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-graph-up text-success"></i> Performance Metrics</h5>
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Profit Factor</div>
+                  <div class="metric-value {{ 'text-success' if (dm.profit_factor or 0)>1 else 'text-danger' }}">
+                    {{ '%.2f'|format(dm.profit_factor or 0) }}
+                  </div>
+                  <div class="metric-subtext">Avg Win / Avg Loss</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Sharpe Ratio</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.sharpe_ratio or 0) }}</div>
+                  <div class="metric-subtext">Risk-adjusted returns</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Sortino Ratio</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.sortino_ratio or 0) }}</div>
+                  <div class="metric-subtext">Downside risk adjusted</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Return on Capital</div>
+                  <div class="metric-value {{ 'text-success' if (dm.return_on_capital or 0)>0 else 'text-danger' }}">
+                    {{ '%.2f'|format(dm.return_on_capital or 0) }}%
+                  </div>
+                  <div class="metric-subtext">ROC percentage</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Efficiency Ratio</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.efficiency_ratio or 0) }}</div>
+                  <div class="metric-subtext">Net PnL / Gross PnL</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">R-Multiple Avg</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.r_multiple_avg or 0) }}</div>
+                  <div class="metric-subtext">Reward to risk</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Risk Metrics -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-shield-exclamation text-danger"></i> Risk Metrics</h5>
+              <div class="stat-grid">
+                <div class="metric-card gradient-bg-danger">
+                  <div class="metric-label">Max Drawdown</div>
+                  <div class="metric-value text-danger">
+                    ₹{{ '%.2f'|format(dm.max_drawdown or 0) }}
+                  </div>
+                  <div class="metric-subtext">{{ '%.2f'|format(dm.max_drawdown_pct or 0) }}% of capital</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Value at Risk (95%)</div>
+                  <div class="metric-value text-danger">
+                    ₹{{ '%.2f'|format(dm.value_at_risk_95 or 0) }}
+                  </div>
+                  <div class="metric-subtext">95th percentile loss</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Downside Deviation</div>
+                  <div class="metric-value">₹{{ '%.2f'|format(dm.downside_deviation or 0) }}</div>
+                  <div class="metric-subtext">Negative returns volatility</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">PnL Volatility</div>
+                  <div class="metric-value">₹{{ '%.2f'|format(dm.pnl_volatility or 0) }}</div>
+                  <div class="metric-subtext">Standard deviation</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">PnL Skewness</div>
+                  <div class="metric-value {{ 'text-success' if (dm.pnl_skewness or 0)>0 else 'text-danger' }}">
+                    {{ '%.2f'|format(dm.pnl_skewness or 0) }}
+                  </div>
+                  <div class="metric-subtext">Distribution asymmetry</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">PnL Kurtosis</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.pnl_kurtosis or 0) }}</div>
+                  <div class="metric-subtext">Tail risk indicator</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trading Activity Metrics -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-activity text-primary"></i> Trading Activity</h5>
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Avg Trades/Day</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.avg_trades_per_day or 0) }}</div>
+                  <div class="metric-subtext">Daily frequency</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Trade Value</div>
+                  <div class="metric-value">₹{{ '%.0f'|format(dm.avg_trade_value or 0) }}</div>
+                  <div class="metric-subtext">Per trade</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Holding Period</div>
+                  <div class="metric-value">{{ '%.0f'|format(dm.avg_holding_period or 0) }}</div>
+                  <div class="metric-subtext">Minutes per position</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Volume/Trade</div>
+                  <div class="metric-value">{{ '%.0f'|format(dm.avg_volume_per_trade or 0) }}</div>
+                  <div class="metric-subtext">Contract volume</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Consecutive Wins</div>
+                  <div class="metric-value text-success">{{ dm.consecutive_wins or 0 }}</div>
+                  <div class="metric-subtext">Max streak</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Consecutive Losses</div>
+                  <div class="metric-value text-danger">{{ dm.consecutive_losses or 0 }}</div>
+                  <div class="metric-subtext">Max streak</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Win/Loss Analysis -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-pie-chart text-info"></i> Win/Loss Analysis</h5>
+              <div class="row g-4">
+                <div class="col-md-6">
+                  <div class="stat-grid">
+                    <div class="metric-card gradient-bg-success">
+                      <div class="metric-label">Avg Win</div>
+                      <div class="metric-value text-success">₹{{ '%.2f'|format(dm.avg_win or 0) }}</div>
+                      <div class="metric-subtext">Per winning trade</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-label">Largest Win</div>
+                      <div class="metric-value text-success">₹{{ '%.2f'|format(dm.largest_win or 0) }}</div>
+                      <div class="metric-subtext">Best trade</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="stat-grid">
+                    <div class="metric-card gradient-bg-danger">
+                      <div class="metric-label">Avg Loss</div>
+                      <div class="metric-value text-danger">₹{{ '%.2f'|format(dm.avg_loss or 0) }}</div>
+                      <div class="metric-subtext">Per losing trade</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-label">Largest Loss</div>
+                      <div class="metric-value text-danger">₹{{ '%.2f'|format(dm.largest_loss or 0) }}</div>
+                      <div class="metric-subtext">Worst trade</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Score & Quality Metrics -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-star text-warning"></i> Trade Quality Scores</h5>
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Avg F-Score</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.avg_f_score or 0) }}</div>
+                  <div class="metric-subtext">Fundamental score</div>
+                  <div class="progress-custom mt-2">
+                    <div class="progress-bar-custom" style="width:{{ dm.avg_f_score or 0 }}%"></div>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg T-Score</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.avg_t_score or 0) }}</div>
+                  <div class="metric-subtext">Technical score</div>
+                  <div class="progress-custom mt-2">
+                    <div class="progress-bar-custom" style="width:{{ dm.avg_t_score or 0 }}%"></div>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Total Score</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.avg_total_score or 0) }}</div>
+                  <div class="metric-subtext">Combined quality</div>
+                  <div class="progress-custom mt-2">
+                    <div class="progress-bar-custom" style="width:{{ dm.avg_total_score or 0 }}%"></div>
+                  </div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">F-Score Volatility</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.f_score_volatility or 0) }}</div>
+                  <div class="metric-subtext">Score consistency</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">T-Score Volatility</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.t_score_volatility or 0) }}</div>
+                  <div class="metric-subtext">Score consistency</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Total Score Volatility</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.total_score_volatility or 0) }}</div>
+                  <div class="metric-subtext">Overall consistency</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Score Performance Analysis -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-bullseye text-success"></i> Score Performance Analysis</h5>
+              <div class="stat-grid">
+                <div class="metric-card gradient-bg-success">
+                  <div class="metric-label">High-Score Win Rate</div>
+                  <div class="metric-value text-success">{{ '%.1f'|format(dm.high_score_win_rate or 0) }}%</div>
+                  <div class="metric-subtext">When score ≥ 70</div>
+                </div>
+                <div class="metric-card gradient-bg-danger">
+                  <div class="metric-label">Low-Score Loss Rate</div>
+                  <div class="metric-value text-danger">{{ '%.1f'|format(dm.low_score_loss_rate or 0) }}%</div>
+                  <div class="metric-subtext">When score < 50</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Score Alignment Effectiveness</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.score_alignment_effectiveness or 0) }}</div>
+                  <div class="metric-subtext">Score-profit correlation</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">52W High Hit Rate</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_high or 0) }}%</div>
+                  <div class="metric-subtext">Near 52-week highs</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">52W Low Hit Rate</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_low or 0) }}%</div>
+                  <div class="metric-subtext">Near 52-week lows</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">All-Time High Hit Rate</div>
+                  <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_alltime_high or 0) }}%</div>
+                  <div class="metric-subtext">At all-time highs</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Market Behavior Metrics -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-graph-down text-info"></i> Market Behavior</h5>
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Avg Daily Range</div>
+                  <div class="metric-value">₹{{ '%.2f'|format(dm.avg_daily_range or 0) }}</div>
+                  <div class="metric-subtext">Price movement</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Close to Open Return</div>
+                  <div class="metric-value {{ 'text-success' if (dm.avg_close_to_open_return or 0)>0 else 'text-danger' }}">
+                    {{ '%.2f'|format(dm.avg_close_to_open_return or 0) }}%
+                  </div>
+                  <div class="metric-subtext">Overnight change</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Volatility Index</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.volatility_index or 0) }}</div>
+                  <div class="metric-subtext">Market volatility</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Volume Volatility</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.volume_volatility or 0) }}</div>
+                  <div class="metric-subtext">Volume fluctuation</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Trade Timing Bias</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.trade_timing_bias or 0) }}</div>
+                  <div class="metric-subtext">Entry timing quality</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Volume Following</div>
+                  <div class="metric-value">{{ '%.2f'|format(dm.volume_following_behavior or 0) }}</div>
+                  <div class="metric-subtext">Volume trend alignment</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reward/Risk Balance -->
+            <div class="card p-4 mb-4">
+              <h5 class="fw-bold mb-3"><i class="bi bi-arrows-angle-contract text-warning"></i> Risk/Reward Balance</h5>
+              <div class="stat-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Reward to Risk Balance</div>
+                  <div class="metric-value {{ 'text-success' if (dm.reward_to_risk_balance or 0)>2 else 'text-danger' }}">
+                    {{ '%.2f'|format(dm.reward_to_risk_balance or 0) }}
+                  </div>
+                  <div class="metric-subtext">Target: ≥ 2.0</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Gainer %</div>
+                  <div class="metric-value text-success">{{ '%.2f'|format(dm.avg_gainer_pct or 0) }}%</div>
+                  <div class="metric-subtext">Winning positions</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Avg Loser %</div>
+                  <div class="metric-value text-danger">{{ '%.2f'|format(dm.avg_loser_pct or 0) }}%</div>
+                  <div class="metric-subtext">Losing positions</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+
+          <!-- DETECTED PATTERNS -->
+          <section>
+            <h2 class="section-title">⚠️ Behavioral Patterns</h2>
+            <div class="card p-4">
+              <div class="mb-4">
+                {% for pattern_key, pattern_data in report.detected_patterns.items() %}
+                  {% if pattern_data.detected or (pattern_data.count is defined and pattern_data.count > 0) %}
+                    <span class="pattern-badge pattern-detected">
+                      {{ pattern_key.replace('_', ' ').title() }}
+                    </span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+
+              <div class="row">
+                {% for pattern_key, pattern_data in report.detected_patterns.items() %}
+                <div class="col-md-4 mb-3">
+                  <div class="card p-3" style="background:{% if pattern_data.detected %}rgba(239,68,68,.1){% else %}rgba(34,197,94,.1){% endif %}">
+                    <h6>{{ pattern_key.replace('_', ' ').title() }}</h6>
+                    <div class="small">
+                      {% for key, value in pattern_data.items() %}
+                        <div><strong>{{ key }}:</strong> {{ value }}</div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== SNAPSHOT SUMMARY ===== -->
+          <section id="snapshot">
+            <h4 class="section-title"><i class="bi bi-speedometer2"></i> P&L Snapshot</h4>
+            <div class="row g-3 mb-3">
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Investment</div>
+                  <h5>₹{{ '%.2f'|format(report.detailed_metrics.total_investment_value_open or 0) }}</h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Realized</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_realized_pnl or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_realized_pnl or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Unrealized</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_unrealized_pnl or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_unrealized_pnl or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Total P&L</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_pnl_combined or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_pnl_combined or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">ROI %</div>
+                  <h5>{{ '%.2f'|format(((report.detailed_metrics.total_pnl_combined or 0)/((report.detailed_metrics.total_investment_value_open or 0) if (report.detailed_metrics.total_investment_value_open or 0)!=0 else 1)*100)) }}%</h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Booked SL %</div>
+                  <h5>{{ '%.1f'|format(report.detailed_metrics.close_pos_booked_sl_pct or 0) }}%</h5>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+          <!-- ALL DETAILED METRICS -->
+
+          <!-- ===== POSITIONS TABLES ===== -->
           <section id="positions" class="mt-4">
             <h4 class="section-title"><i class="bi bi-box-seam"></i> Positions</h4>
 
-            <!-- Tab Snapshot above tables -->
             <div class="card p-3 mb-3">
               <div class="row g-3">
-                <div class="col-md-3"><div class="small-muted">Open Positions (symbols)</div><div class="fw-bold">{{ dm.open_positions_count or 0 }}</div></div>
-                <div class="col-md-3"><div class="small-muted">Avg Realized / Stock</div><div class="fw-bold">₹{{ '%.2f'|format(dm.avg_realized_pl_per_stock or 0) }}</div></div>
-                <div class="col-md-3"><div class="small-muted">Avg Unrealized / Open Stock</div><div class="fw-bold">₹{{ '%.2f'|format(dm.avg_unrealized_pl_per_open_stock or 0) }}</div></div>
-                <div class="col-md-3"><div class="small-muted">Day MTM (Realized)</div><div class="fw-bold">₹{{ '%.2f'|format(dm.day_mtm or 0) }}</div></div>
+                <div class="col-md-3">
+                  <div class="small-muted">Open Positions (symbols)</div>
+                  <div class="fw-bold">{{ report.detailed_metrics.open_positions_count or 0 }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Avg Realized / Stock</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.avg_realized_pl_per_stock or 0) }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Avg Unrealized / Open Stock</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.avg_unrealized_pl_per_open_stock or 0) }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Day MTM (Realized)</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.day_mtm or 0) }}</div>
+                </div>
               </div>
             </div>
 
-            <ul class="nav nav-tabs" id="posTabs" role="tablist">
-              <li class="nav-item"><a class="nav-link active" id="open-tab" data-bs-toggle="tab" href="#openTab" role="tab">Open Positions</a></li>
-              <li class="nav-item"><a class="nav-link" id="closed-tab" data-bs-toggle="tab" href="#closedTab" role="tab">Closed Positions</a></li>
+            <ul class="nav nav-tabs mb-3" id="posTabs" role="tablist">
+              <li class="nav-item">
+                <a class="nav-link active" id="open-tab" data-bs-toggle="tab" href="#openTab" role="tab">
+                  <i class="bi bi-unlock"></i> Open Positions
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="closed-tab" data-bs-toggle="tab" href="#closedTab" role="tab">
+                  <i class="bi bi-lock"></i> Closed Positions
+                </a>
+              </li>
             </ul>
 
-            <div class="tab-content pt-3">
+            <div class="tab-content">
               <!-- OPEN -->
-              <div class="tab-pane fade show active" id="openTab" role="tabpanel" aria-labelledby="open-tab">
-                {% if dm.open_positions %}
-                  <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle" id="openTable">
-                      <thead class="table-light">
-                        <tr>
-                          <th>Symbol</th>
-                          <th class="text-end">Buy Rate</th>
-                          <th class="text-end">Last Price</th>
-                          <th class="text-end">Qty</th>
-                          <th class="text-end">Value</th>
-                          <th class="text-end">Unrealized</th>
-                          <th class="text-end">MTM %</th>
-                          <th class="text-end">Holding Days</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for p in dm.open_positions %}
-                        <tr>
-                          <td><a href="#buckets" class="text-decoration-none">{{ p.symbol }}</a></td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.avg_cost or 0) }}</td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.last_price or 0) }}</td>
-                          <td class="text-end">{{ p.net_qty or 0 }}</td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.invested_value or 0) }}</td>
-                          <td class="text-end {{ 'text-success' if (p.unrealized or 0) >=0 else 'text-danger' }}">₹{{ '%.2f'|format(p.unrealized or 0) }}</td>
-                          <td class="text-end {{ 'text-success' if (p.pct_change or 0) >=0 else 'text-danger' }}">{{ '%.2f'|format(p.pct_change or 0) }}%</td>
-                          <td class="text-end">{{ p.holding_days or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
+              <div class="tab-pane fade show active" id="openTab" role="tabpanel">
+                {% if report.detailed_metrics.open_positions %}
+                  <div class="card p-3">
+                    <div class="table-responsive">
+                      <table class="table table-sm table-hover align-middle" id="openTable">
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th class="text-end">Buy Rate</th>
+                            <th class="text-end">Last Price</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">Unrealized</th>
+                            <th class="text-end">MTM %</th>
+                            <th class="text-end">Holding Days</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for p in report.detailed_metrics.open_positions %}
+                          <tr>
+                            <td><a href="#buckets">{{ p.symbol }}</a></td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.avg_cost or 0) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.last_price or 0) }}</td>
+                            <td class="text-end">{{ p.net_qty or 0 }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.invested_value or 0) }}</td>
+                            <td class="text-end {{ 'text-success' if (p.unrealized or 0) >=0 else 'text-danger' }}">
+                              ₹{{ '%.2f'|format(p.unrealized or 0) }}
+                            </td>
+                            <td class="text-end {{ 'text-success' if (p.pct_change or 0) >=0 else 'text-danger' }}">
+                              {{ '%.2f'|format(p.pct_change or 0) }}%
+                            </td>
+                            <td class="text-end">{{ p.holding_days or '-' }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 {% else %}
                   <div class="alert alert-secondary">No open positions available.</div>
@@ -313,191 +1131,109 @@ class ReportGenerator:
               </div>
 
               <!-- CLOSED -->
-              <div class="tab-pane fade" id="closedTab" role="tabpanel" aria-labelledby="closed-tab">
-                {% if dm.closed_positions %}
-                  <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle" id="closedTable">
-                      <thead class="table-light">
-                        <tr>
-                          <th>Symbol</th>
-                          <th class="text-end">Buy Rate</th>
-                          <th class="text-end">Sell Rate</th>
-                          <th class="text-end">Qty</th>
-                          <th class="text-end">Value</th>
-                          <th class="text-end">Realized P&L</th>
-                          <th class="text-end">Return %</th>
-                          <th class="text-end">Holding Days</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for p in dm.closed_positions %}
-                        <tr>
-                          <td>{{ p.symbol }}</td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.buy_rate or 0) }}</td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.sell_rate or 0) }}</td>
-                          <td class="text-end">{{ p.qty or 0 }}</td>
-                          <td class="text-end">₹{{ '%.2f'|format(p.value or 0) }}</td>
-                          <td class="text-end {{ 'text-success' if (p.pnl or 0) >=0 else 'text-danger' }}">₹{{ '%.2f'|format(p.pnl or 0) }}</td>
-                          <td class="text-end {{ 'text-success' if (p.return_pct or 0) >=0 else 'text-danger' }}">{{ '%.2f'|format(p.return_pct or 0) }}%</td>
-                          <td class="text-end">{{ p.holding_days or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
+              <div class="tab-pane fade" id="closedTab" role="tabpanel">
+                {% if report.detailed_metrics.closed_positions %}
+                  <div class="card p-3">
+                    <div class="table-responsive">
+                      <table class="table table-sm table-hover align-middle" id="closedTable">
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th class="text-end">Buy Rate</th>
+                            <th class="text-end">Sell Rate</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">Realized P&L</th>
+                            <th class="text-end">Return %</th>
+                            <th class="text-end">Holding Days</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for p in report.detailed_metrics.closed_positions %}
+                          <tr>
+                            <td>{{ p.symbol }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.buy_rate or 0) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.sell_rate or 0) }}</td>
+                            <td class="text-end">{{ p.qty or 0 }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.value or 0) }}</td>
+                            <td class="text-end {{ 'text-success' if (p.pnl or 0) >=0 else 'text-danger' }}">
+                              ₹{{ '%.2f'|format(p.pnl or 0) }}
+                            </td>
+                            <td class="text-end {{ 'text-success' if (p.return_pct or 0) >=0 else 'text-danger' }}">
+                              {{ '%.2f'|format(p.return_pct or 0) }}%
+                            </td>
+                            <td class="text-end">{{ p.holding_days or '-' }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 {% else %}
-                  <div class="alert alert-secondary">Closed positions summary not available in this export. (Optional: populate <code>closed_positions</code> in metrics.)</div>
+                  <div class="alert alert-secondary">Closed positions data not available.</div>
                 {% endif %}
               </div>
             </div>
           </section>
 
-          <!-- ===== TRADING PERSONA (BIGGER, CLEANER) ===== -->
-          <section id="persona" class="mt-4">
-            <h4 class="section-title"><i class="bi bi-person-vcard"></i> Trading Persona</h4>
-            {% if dm.persona_traits %}
-            <div class="card p-4 mb-4">
-              <div class="row g-4">
-                <div class="col-xl-6">
-                  <canvas id="personaRadar" height="260" aria-label="Persona Traits Radar"></canvas>
-                </div>
-                <div class="col-xl-6">
-                  <div class="mb-3">
-                    <span class="badge bg-primary me-1">{{ dm.persona_type or 'Persona' }}</span>
-                    {% if dm.persona_tags %}{% for tag in dm.persona_tags %}<span class="badge bg-secondary me-1">{{ tag }}</span>{% endfor %}{% endif %}
-                  </div>
-                  <div class="small-muted">Summary</div>
-                  <div class="card p-3 mb-3" style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
-                    <div class="small">{{ (dm.trait_summary or '')|safe }}</div>
-                  </div>
-                  <div class="small-muted mb-1">Trait Bars</div>
-                  <canvas id="personaBars" height="140"></canvas>
-                </div>
-              </div>
-            </div>
-            {% else %}
-              <div class="alert alert-secondary">Persona traits not available in this export.</div>
-            {% endif %}
-          </section>
 
-          <!-- ===== REALIZED & UNREALIZED OVERVIEW (GAUGE + EXPAND) ===== -->
-          <section id="ru" class="mt-4">
-            <h4 class="section-title"><i class="bi bi-pie-chart"></i> Realized & Unrealized Overview</h4>
-            <div class="card p-4 text-center">
-              <div class="row justify-content-center">
-                <div class="col-md-4">
-                  <canvas id="ruGauge" height="220" aria-label="Realized vs Unrealized"></canvas>
-                  <div class="small-muted mt-2">Share of P&L that is realized vs unrealized</div>
-                </div>
-              </div>
-
-              <button class="btn btn-sm btn-outline-primary mt-3 no-print" data-bs-toggle="collapse" data-bs-target="#ruDetails">
-                Show All Trades (Realized & Unrealized)
-              </button>
-              <div class="collapse mt-3 text-start" id="ruDetails">
-                <div class="row g-3">
-                  <div class="col-lg-6">
-                    <div class="card p-3 h-100">
-                      <h6 class="fw-bold mb-2"><i class="bi bi-cash-coin text-success"></i> Realized Trades</h6>
-                      {% if dm.realized_trades %}
-                        <div class="table-responsive"><table class="table table-sm table-striped">
-                          <thead><tr>
-                            <th>Symbol</th><th class="text-end">Buy Rate</th><th class="text-end">Sell Rate</th>
-                            <th class="text-end">Qty</th><th class="text-end">P&L</th><th class="text-end">Holding Days</th><th class="text-end">Return %</th>
-                          </tr></thead>
-                          <tbody>
-                            {% for t in dm.realized_trades %}
-                            <tr>
-                              <td>{{ t.symbol }}</td><td class="text-end">₹{{ '%.2f'|format(t.buy_rate or 0) }}</td>
-                              <td class="text-end">₹{{ '%.2f'|format(t.sell_rate or 0) }}</td><td class="text-end">{{ t.qty or 0 }}</td>
-                              <td class="text-end {{ 'text-success' if (t.pnl or 0)>=0 else 'text-danger' }}">₹{{ '%.2f'|format(t.pnl or 0) }}</td>
-                              <td class="text-end">{{ t.holding_days or '-' }}</td>
-                              <td class="text-end {{ 'text-success' if (t.return_pct or 0)>=0 else 'text-danger' }}">{{ '%.2f'|format(t.return_pct or 0) }}%</td>
-                            </tr>
-                            {% endfor %}
-                          </tbody>
-                        </table></div>
-                      {% else %}
-                        <div class="alert alert-secondary">Detailed realized trades not attached. (Optional: populate <code>realized_trades</code> list.)</div>
-                      {% endif %}
-                    </div>
-                  </div>
-
-                  <div class="col-lg-6">
-                    <div class="card p-3 h-100">
-                      <h6 class="fw-bold mb-2"><i class="bi bi-bar-chart text-info"></i> Unrealized (Open) Trades</h6>
-                      {% if dm.unrealized_trades %}
-                        <div class="table-responsive"><table class="table table-sm table-striped">
-                          <thead><tr>
-                            <th>Symbol</th><th class="text-end">Buy Rate</th><th class="text-end">LTP</th>
-                            <th class="text-end">Qty</th><th class="text-end">Unrealized</th><th class="text-end">MTM %</th><th class="text-end">Holding Days</th>
-                          </tr></thead>
-                          <tbody>
-                            {% for t in dm.unrealized_trades %}
-                            <tr>
-                              <td>{{ t.symbol }}</td><td class="text-end">₹{{ '%.2f'|format(t.buy_rate or 0) }}</td>
-                              <td class="text-end">₹{{ '%.2f'|format(t.ltp or 0) }}</td><td class="text-end">{{ t.qty or 0 }}</td>
-                              <td class="text-end {{ 'text-success' if (t.unrealized or 0)>=0 else 'text-danger' }}">₹{{ '%.2f'|format(t.unrealized or 0) }}</td>
-                              <td class="text-end {{ 'text-success' if (t.mtm_pct or 0)>=0 else 'text-danger' }}">{{ '%.2f'|format(t.mtm_pct or 0) }}%</td>
-                              <td class="text-end">{{ t.holding_days or '-' }}</td>
-                            </tr>
-                            {% endfor %}
-                          </tbody>
-                        </table></div>
-                      {% else %}
-                        <div class="alert alert-secondary">Detailed unrealized (open) trades not attached. (Optional: populate <code>unrealized_trades</code> list.)</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ===== GAINERS & LOSERS (DETAILED) ===== -->
+          <!-- ===== GAINERS & LOSERS ===== -->
           <section id="gainers" class="mt-4">
-            <h4 class="section-title"><i class="bi bi-arrow-left-right"></i> Gainers & Losers</h4>
+            <h4 class="section-title"><i class="bi bi-arrow-left-right"></i> Top Gainers & Losers</h4>
             <div class="accordion" id="gainLossAcc">
-              {% for key,label,icon,clr in [('gainer','Top Gainers','bi-arrow-up-circle','text-success'),('loser','Top Losers','bi-arrow-down-circle','text-danger')] %}
+              {% for key,label,icon,clr in [('gainer','Top Gainers','bi-arrow-up-circle','success'),('loser','Top Losers','bi-arrow-down-circle','danger')] %}
               {% set blk = dm.get(key, {}) %}
-              <div class="accordion-item mb-2">
+              <div class="accordion-item mb-3 border-0">
                 <h2 class="accordion-header">
-                  <button class="accordion-button {{ 'collapsed' if not loop.first else '' }}" data-bs-toggle="collapse" data-bs-target="#{{key}}Collapse">
-                    <i class="bi {{icon}} me-2 {{clr}}"></i> {{ label }} ({{ blk.count or 0 }})
+                  <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold" 
+                          data-bs-toggle="collapse" data-bs-target="#{{key}}Collapse" 
+                          style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
+                    <i class="bi {{icon}} me-2 text-{{clr}}"></i> 
+                    {{ label }} 
+                    <span class="badge bg-{{clr}} ms-2">{{ blk.count or 0 }}</span>
                   </button>
                 </h2>
-                <div id="{{key}}Collapse" class="accordion-collapse collapse {{ 'show' if loop.first else '' }}">
+                <div id="{{key}}Collapse" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
                   <div class="accordion-body">
                     {% if blk.list %}
                       <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
+                        <table class="table table-sm table-hover align-middle">
                           <thead>
                             <tr>
-                              <th>Symbol</th><th class="text-end">Buy Rate</th><th class="text-end">Sell/LTP</th>
-                              <th class="text-end">Qty</th><th class="text-end">Value</th><th class="text-end">P&L</th>
-                              <th class="text-end">Holding Days</th><th class="text-end">Return %</th>
+                              <th>Symbol</th>
+                              <th class="text-end">Buy Rate</th>
+                              <th class="text-end">Sell/LTP</th>
+                              <th class="text-end">Qty</th>
+                              <th class="text-end">Value</th>
+                              <th class="text-end">P&L</th>
+                              <th class="text-end">Days</th>
+                              <th class="text-end">Return %</th>
                             </tr>
                           </thead>
                           <tbody>
                             {% for s in blk.list %}
                               {% set det = (dm.symbol_details[s] if (dm.symbol_details and (s in dm.symbol_details)) else None) %}
                               <tr>
-                                <td>{{ s }}</td>
+                                <td><strong>{{ s }}</strong></td>
                                 <td class="text-end">₹{{ '%.2f'|format((det.buy_rate if det and det.buy_rate is not none else 0)) }}</td>
                                 <td class="text-end">₹{{ '%.2f'|format((det.sell_rate if det and det.sell_rate is not none else (det.ltp if det and det.ltp is not none else 0))) }}</td>
                                 <td class="text-end">{{ det.qty if det and det.qty is not none else '-' }}</td>
                                 <td class="text-end">₹{{ '%.2f'|format((det.value if det and det.value is not none else 0)) }}</td>
                                 {% set pnlv = (det.pnl if det and det.pnl is not none else (det.unrealized if det and det.unrealized is not none else 0)) %}
-                                <td class="text-end {{ 'text-success' if (pnlv or 0)>=0 else 'text-danger' }}">₹{{ '%.2f'|format(pnlv or 0) }}</td>
+                                <td class="text-end fw-bold {{ 'text-success' if (pnlv or 0)>=0 else 'text-danger' }}">
+                                  ₹{{ '%.2f'|format(pnlv or 0) }}
+                                </td>
                                 <td class="text-end">{{ det.holding_days if det and det.holding_days is not none else '-' }}</td>
-                                <td class="text-end {{ 'text-success' if (det.return_pct if det else 0)>=0 else 'text-danger' }}">{{ '%.2f'|format((det.return_pct if det and det.return_pct is not none else 0)) }}%</td>
+                                <td class="text-end fw-bold {{ 'text-success' if (det.return_pct if det else 0)>=0 else 'text-danger' }}">
+                                  {{ '%.2f'|format((det.return_pct if det and det.return_pct is not none else 0)) }}%
+                                </td>
                               </tr>
                             {% endfor %}
                           </tbody>
                         </table>
                       </div>
                     {% else %}
-                      <div class="alert alert-secondary">No {{ label.lower() }} data present.</div>
+                      <div class="alert alert-secondary">No {{ label.lower() }} data available.</div>
                     {% endif %}
                   </div>
                 </div>
@@ -506,65 +1242,87 @@ class ReportGenerator:
             </div>
           </section>
 
-          <!-- ===== BUCKETS BY % CHANGE (CLICK TO SEE TRADE JOURNEY) ===== -->
+          <!-- ===== BUCKETS ===== -->
           <section id="buckets" class="mt-4">
-            <h4 class="section-title"><i class="bi bi-percent"></i> Buckets by % Change (Open Positions)</h4>
+            <h4 class="section-title"><i class="bi bi-percent"></i> Performance Buckets (Open Positions)</h4>
             {% if dm.buckets %}
               <div class="row g-3">
                 {% for k,v in dm.buckets.items() %}
                 <div class="col-sm-6 col-lg-3">
-                  <div class="card p-3 h-100">
-                    <div class="d-flex justify-content-between align-items-center">
-                      <div class="fw-bold">{{ k }}</div>
-                      <span class="badge bg-secondary">#{{ v.count or 0 }}</span>
+                  <div class="card p-3 h-100 gradient-bg-primary">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div class="fw-bold fs-5">{{ k }}</div>
+                      <span class="badge bg-primary">{{ v.count or 0 }}</span>
                     </div>
-                    <div class="small-muted mt-1">{{ '%.1f'|format(v.mtm_share_pct or 0) }}% MTM • ₹{{ '%.0f'|format(v.total_value or 0) }}</div>
+                    <div class="small-muted">
+                      <div>MTM Share: {{ '%.1f'|format(v.mtm_share_pct or 0) }}%</div>
+                      <div>Total Value: ₹{{ '%.0f'|format(v.total_value or 0) }}</div>
+                    </div>
 
-                    <button class="btn btn-sm btn-outline-primary mt-2 no-print" data-bs-toggle="collapse" data-bs-target="#bucket{{loop.index}}">
-                      View Symbols & Trade Journey
+                    <button class="btn btn-sm btn-outline-primary mt-3 no-print" 
+                            data-bs-toggle="collapse" data-bs-target="#bucket{{loop.index}}">
+                      <i class="bi bi-eye"></i> View Details
                     </button>
 
-                    <div class="collapse mt-2" id="bucket{{loop.index}}">
+                    <div class="collapse mt-3" id="bucket{{loop.index}}">
                       {% if v.list and v.list|length>0 %}
                         <ul class="list-group list-group-flush small">
                           {% set outer_index = loop.index %}
                             {% for s in v.list %}
-                              <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-dot"></i> {{ s }}</span>
-                                <button class="btn btn-xs btn-link" data-bs-toggle="collapse" data-bs-target="#journey{{outer_index}}_{{loop.index}}">details</button>
+                              <li class="list-group-item bg-transparent p-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                  <span><i class="bi bi-dot"></i> {{ s }}</span>
+                                  <button class="btn btn-xs btn-link p-0" 
+                                          data-bs-toggle="collapse" 
+                                          data-bs-target="#journey{{outer_index}}_{{loop.index}}">
+                                    <i class="bi bi-info-circle"></i>
+                                  </button>
+                                </div>
                               </li>
                               <div class="collapse" id="journey{{outer_index}}_{{loop.index}}">
-                            
-                              {% set J = (dm.symbol_journeys[s] if (dm.symbol_journeys and (s in dm.symbol_journeys)) else None) %}
-                              {% if J %}
-                                <div class="table-responsive mt-2">
-                                  <table class="table table-sm table-striped">
-                                    <thead><tr>
-                                      <th>Leg</th><th class="text-end">Buy Rate</th><th class="text-end">Sell Rate</th>
-                                      <th class="text-end">Qty</th><th class="text-end">Value</th><th class="text-end">P&L</th>
-                                      <th class="text-end">Holding Days</th><th class="text-end">Return %</th>
-                                    </tr></thead>
-                                    <tbody>
-                                      {% for leg in J %}
+                                {% set J = (dm.symbol_journeys[s] if (dm.symbol_journeys and (s in dm.symbol_journeys)) else None) %}
+                                {% if J %}
+                                  <div class="table-responsive mt-2">
+                                    <table class="table table-sm table-striped">
+                                      <thead>
                                         <tr>
-                                          <td>{{ loop.index }}</td>
-                                          <td class="text-end">₹{{ '%.2f'|format(leg.buy_rate or 0) }}</td>
-                                          <td class="text-end">₹{{ '%.2f'|format(leg.sell_rate or 0) }}</td>
-                                          <td class="text-end">{{ leg.qty or 0 }}</td>
-                                          <td class="text-end">₹{{ '%.2f'|format(leg.value or 0) }}</td>
-                                          <td class="text-end {{ 'text-success' if (leg.pnl or 0)>=0 else 'text-danger' }}">₹{{ '%.2f'|format(leg.pnl or 0) }}</td>
-                                          <td class="text-end">{{ leg.holding_days or '-' }}</td>
-                                          <td class="text-end {{ 'text-success' if (leg.return_pct or 0)>=0 else 'text-danger' }}">{{ '%.2f'|format(leg.return_pct or 0) }}%</td>
+                                          <th>Leg</th>
+                                          <th class="text-end">Buy</th>
+                                          <th class="text-end">Sell</th>
+                                          <th class="text-end">Qty</th>
+                                          <th class="text-end">Value</th>
+                                          <th class="text-end">P&L</th>
+                                          <th class="text-end">Days</th>
+                                          <th class="text-end">Return %</th>
                                         </tr>
-                                      {% endfor %}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              {% else %}
-                                <div class="alert alert-secondary mt-2">Trade journey not attached for <strong>{{ s }}</strong>. (Optional: populate <code>symbol_journeys[s]</code> as a list.)</div>
-                              {% endif %}
-                            </div>
-                          {% endfor %}
+                                      </thead>
+                                      <tbody>
+                                        {% for leg in J %}
+                                          <tr>
+                                            <td>{{ loop.index }}</td>
+                                            <td class="text-end">₹{{ '%.2f'|format(leg.buy_rate or 0) }}</td>
+                                            <td class="text-end">₹{{ '%.2f'|format(leg.sell_rate or 0) }}</td>
+                                            <td class="text-end">{{ leg.qty or 0 }}</td>
+                                            <td class="text-end">₹{{ '%.2f'|format(leg.value or 0) }}</td>
+                                            <td class="text-end {{ 'text-success' if (leg.pnl or 0)>=0 else 'text-danger' }}">
+                                              ₹{{ '%.2f'|format(leg.pnl or 0) }}
+                                            </td>
+                                            <td class="text-end">{{ leg.holding_days or '-' }}</td>
+                                            <td class="text-end {{ 'text-success' if (leg.return_pct or 0)>=0 else 'text-danger' }}">
+                                              {{ '%.2f'|format(leg.return_pct or 0) }}%
+                                            </td>
+                                          </tr>
+                                        {% endfor %}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                {% else %}
+                                  <div class="alert alert-secondary mt-2 small">
+                                    Trade journey not available for {{ s }}.
+                                  </div>
+                                {% endif %}
+                              </div>
+                            {% endfor %}
                         </ul>
                       {% else %}
                         <div class="alert alert-secondary mt-2">No symbols in this bucket.</div>
@@ -578,173 +1336,433 @@ class ReportGenerator:
               <div class="alert alert-secondary">Bucket analysis not available.</div>
             {% endif %}
           </section>
-
-          <!-- ===== BEHAVIORAL ANALYTICS (existing charts) ===== -->
-          <section id="analytics" class="mt-4">
-            <h4 class="section-title"><i class="bi bi-activity"></i> Behavioral Analytics</h4>
-            <div class="row g-3">
-              <div class="col-md-4">
-                <div class="card p-3 h-100">
-                  <h6 class="fw-bold mb-2">Hour of Day ⏰</h6>
-                  <canvas id="hourHist" height="180"></canvas>
-                </div>
-              </div>
-              <div class="col-md-4">
-                <div class="card p-3 h-100">
-                  <h6 class="fw-bold mb-2">Day of Week 📅</h6>
-                  <canvas id="weekdayHist" height="180"></canvas>
-                </div>
-              </div>
-              <div class="col-md-4">
-                <div class="card p-3 h-100">
-                  <h6 class="fw-bold mb-2">Allocation 🍰</h6>
-                  <canvas id="allocationDonut" height="180"></canvas>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ===== AI INSIGHTS (existing) ===== -->
-          <section id="ai" class="mt-4">
-            {% if report.ai_analysis %}
-            <h4 class="section-title"><i class="bi bi-robot"></i> AI Insights</h4>
-            <div class="accordion" id="aiAcc">
-              {% for k,v in report.ai_analysis.items() %}
-              <div class="accordion-item mb-2">
-                <h2 class="accordion-header">
-                  <button class="accordion-button {{ '' if loop.first else 'collapsed' }}" data-bs-toggle="collapse" data-bs-target="#ai{{ loop.index }}">
-                    {{ k.replace('_',' ').title() }}
-                  </button>
-                </h2>
-                <div id="ai{{ loop.index }}" class="accordion-collapse collapse {{ 'show' if loop.first else '' }}">
-                  <div class="accordion-body">{{ v|safe }}</div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
-          </section>
-
-          <!-- ===== RECOMMENDATIONS (refined dock) ===== -->
-          {% if report.recommendations %}
-          <section class="mt-4">
-            <h4 class="section-title"><i class="bi bi-lightbulb"></i> Recommendations</h4>
-            <div class="position-relative overflow-hidden py-3">
-              <div id="dockCarousel" class="d-flex flex-nowrap justify-content-start align-items-stretch gap-3">
-                {% for rec in report.recommendations %}
-                <div class="reco-item flex-shrink-0" style="width:260px">
-                  <div class="card reco-card p-3 h-100">
-                    <div class="fs-2 mb-2 text-primary"><i class="bi bi-lightbulb-fill"></i></div>
-                    <p class="mb-1 fw-semibold">{{ rec }}</p>
-                    <div class="small-muted">#{{ loop.index }}</div>
+ NEW:datas
+           <!-- ===== ✅ NEW: TRADE QUALITY DISTRIBUTION ===== -->
+          {% if report.trade_analytics and report.trade_analytics.score_distribution %}
+          <section id="trade-quality" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-star-fill text-warning"></i> Trade Quality Distribution</h4>
+            <div class="card p-4 mb-4">
+              <div class="row g-4">
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-success">
+                    <div class="metric-label">Excellent (80+)</div>
+                    <div class="metric-value text-success">{{ report.trade_analytics.score_distribution.excellent }}</div>
+                    <div class="metric-subtext">High quality trades</div>
                   </div>
                 </div>
-                {% endfor %}
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Good (60-80)</div>
+                    <div class="metric-value">{{ report.trade_analytics.score_distribution.good }}</div>
+                    <div class="metric-subtext">Above average</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Average (40-60)</div>
+                    <div class="metric-value text-warning">{{ report.trade_analytics.score_distribution.average }}</div>
+                    <div class="metric-subtext">Needs improvement</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-danger">
+                    <div class="metric-label">Poor (<40)</div>
+                    <div class="metric-value text-danger">{{ report.trade_analytics.score_distribution.poor }}</div>
+                    <div class="metric-subtext">High risk trades</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+          
+          <!-- ===== ✅ NEW: TIME-BASED PERFORMANCE ===== -->
+          {% if report.trade_analytics and report.trade_analytics.hourly_performance %}
+          <section id="time-performance" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-clock-history"></i> Time-Based Performance Analysis</h4>
+            <div class="row g-4">
+              <div class="col-md-6">
+                <div class="card p-4 h-100">
+                  <h6 class="fw-bold mb-3">Hourly P&L Heatmap</h6>
+                  <div class="chart-wrapper">
+                    <canvas id="hourlyPnlChart" height="300"></canvas>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card p-4 h-100">
+                  <h6 class="fw-bold mb-3">Daily P&L Performance</h6>
+                  <div class="chart-wrapper">
+                    <canvas id="dailyPnlChart" height="300"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+          
+          <!-- ===== ✅ NEW: SYMBOL PERFORMANCE BREAKDOWN ===== -->
+          {% if report.trade_analytics and report.trade_analytics.top_symbols %}
+          <section id="symbol-performance" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-bar-chart-line"></i> Symbol Performance Breakdown</h4>
+            <div class="accordion" id="symbolAccordion">
+              <!-- Top Performers -->
+              <div class="accordion-item mb-3 border-0">
+                <h2 class="accordion-header">
+                  <button class="accordion-button fw-bold gradient-bg-success" 
+                          data-bs-toggle="collapse" data-bs-target="#topSymbols">
+                    <i class="bi bi-trophy-fill me-2 text-success"></i> 
+                    Top 10 Profitable Symbols
+                  </button>
+                </h2>
+                <div id="topSymbols" class="accordion-collapse collapse show">
+                  <div class="accordion-body">
+                    <div class="table-responsive">
+                      <table class="table table-hover">
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th class="text-end">Total P&L</th>
+                            <th class="text-end">Avg P&L/Trade</th>
+                            <th class="text-end">Trades</th>
+                            <th class="text-end">Avg Score</th>
+                            <th class="text-end">Avg Holding (min)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for sym in report.trade_analytics.top_symbols %}
+                          <tr>
+                            <td class="fw-bold">{{ sym.symbol }}</td>
+                            <td class="text-end text-success">₹{{ '%.2f'|format(sym.total_pnl) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(sym.avg_pnl) }}</td>
+                            <td class="text-end">{{ sym.trades }}</td>
+                            <td class="text-end">{{ '%.1f'|format(sym.avg_score or 0) }}</td>
+                            <td class="text-end">{{ '%.0f'|format(sym.avg_holding or 0) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Worst Performers -->
+              <div class="accordion-item mb-3 border-0">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed fw-bold gradient-bg-danger" 
+                          data-bs-toggle="collapse" data-bs-target="#worstSymbols">
+                    <i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i> 
+                    Top 10 Loss-Making Symbols
+                  </button>
+                </h2>
+                <div id="worstSymbols" class="accordion-collapse collapse">
+                  <div class="accordion-body">
+                    <div class="table-responsive">
+                      <table class="table table-hover">
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th class="text-end">Total P&L</th>
+                            <th class="text-end">Avg P&L/Trade</th>
+                            <th class="text-end">Trades</th>
+                            <th class="text-end">Avg Score</th>
+                            <th class="text-end">Avg Holding (min)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for sym in report.trade_analytics.worst_symbols %}
+                          <tr>
+                            <td class="fw-bold">{{ sym.symbol }}</td>
+                            <td class="text-end text-danger">₹{{ '%.2f'|format(sym.total_pnl) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(sym.avg_pnl) }}</td>
+                            <td class="text-end">{{ sym.trades }}</td>
+                            <td class="text-end">{{ '%.1f'|format(sym.avg_score or 0) }}</td>
+                            <td class="text-end">{{ '%.0f'|format(sym.avg_holding or 0) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+          
+          <!-- ===== ✅ NEW: WINNING/LOSING STREAKS ===== -->
+          {% if report.trade_analytics and report.trade_analytics.streaks %}
+          <section id="streaks" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-arrow-repeat"></i> Winning & Losing Streaks</h4>
+            <div class="card p-4 mb-4">
+              <div class="row g-4">
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-success">
+                    <div class="metric-label">Max Winning Streak</div>
+                    <div class="metric-value text-success">{{ report.trade_analytics.streaks.max_winning_streak }}</div>
+                    <div class="metric-subtext">Consecutive wins</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-danger">
+                    <div class="metric-label">Max Losing Streak</div>
+                    <div class="metric-value text-danger">{{ report.trade_analytics.streaks.max_losing_streak }}</div>
+                    <div class="metric-subtext">Consecutive losses</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Avg Winning Streak</div>
+                    <div class="metric-value">{{ '%.1f'|format(report.trade_analytics.streaks.avg_winning_streak) }}</div>
+                    <div class="metric-subtext">Average momentum</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Avg Losing Streak</div>
+                    <div class="metric-value">{{ '%.1f'|format(report.trade_analytics.streaks.avg_losing_streak) }}</div>
+                    <div class="metric-subtext">Risk recovery time</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+          
+          <!-- ===== ✅ NEW: SCORE-BASED SEGMENTATION ===== -->
+          {% if report.trade_analytics and report.trade_analytics.score_segments %}
+          <section id="score-segments" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-pie-chart-fill"></i> Performance by Score Range</h4>
+            <div class="card p-4 mb-4">
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>Score Range</th>
+                      <th class="text-end">Trades</th>
+                      <th class="text-end">Win Rate</th>
+                      <th class="text-end">Avg P&L</th>
+                      <th class="text-end">Total P&L</th>
+                      <th class="text-end">Avg Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for range, data in report.trade_analytics.score_segments.items() %}
+                    <tr>
+                      <td class="fw-bold">{{ range }}</td>
+                      <td class="text-end">{{ data.trade_count }}</td>
+                      <td class="text-end {{ 'text-success' if data.win_rate > 50 else 'text-danger' }}">
+                        {{ '%.1f'|format(data.win_rate) }}%
+                      </td>
+                      <td class="text-end {{ 'text-success' if data.avg_pnl > 0 else 'text-danger' }}">
+                        ₹{{ '%.2f'|format(data.avg_pnl) }}
+                      </td>
+                      <td class="text-end {{ 'text-success' if data.total_pnl > 0 else 'text-danger' }}">
+                        ₹{{ '%.2f'|format(data.total_pnl) }}
+                      </td>
+                      <td class="text-end">{{ '%.1f'|format(data.avg_score) }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+          {% endif %}
+          
+          <!-- ===== ✅ NEW: HOLDING PERIOD ANALYSIS ===== -->
+          {% if report.trade_analytics and report.trade_analytics.holding_period_segments %}
+          <section id="holding-analysis" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-hourglass-split"></i> Performance by Holding Period</h4>
+            <div class="card p-4 mb-4">
+              <div class="chart-wrapper mb-4">
+                <canvas id="holdingPeriodChart" height="300"></canvas>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>Holding Period</th>
+                      <th class="text-end">Trades</th>
+                      <th class="text-end">Win Rate</th>
+                      <th class="text-end">Avg P&L</th>
+                      <th class="text-end">Total P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for period, data in report.trade_analytics.holding_period_segments.items() %}
+                    <tr>
+                      <td class="fw-bold">{{ period }}</td>
+                      <td class="text-end">{{ data.trade_count }}</td>
+                      <td class="text-end {{ 'text-success' if data.win_rate > 50 else 'text-danger' }}">
+                        {{ '%.1f'|format(data.win_rate) }}%
+                      </td>
+                      <td class="text-end {{ 'text-success' if data.avg_pnl > 0 else 'text-danger' }}">
+                        ₹{{ '%.2f'|format(data.avg_pnl) }}
+                      </td>
+                      <td class="text-end {{ 'text-success' if data.total_pnl > 0 else 'text-danger' }}">
+                        ₹{{ '%.2f'|format(data.total_pnl) }}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>
           {% endif %}
 
-          <div class="text-center small-muted my-4 small">AI-powered report — not financial advice.<br>© {{ (report.metadata.generated_at or '0000')[:4] }} The ResolveRoom</div>
+  
+
+          <!-- ===== AI INSIGHTS ===== -->
+          {% if report.ai_analysis %}
+          <section id="ai" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-robot"></i> AI-Generated Insights</h4>
+            <div class="accordion" id="aiAcc">
+              {% for k,v in report.ai_analysis.items() %}
+              <div class="accordion-item mb-3 border-0">
+                <h2 class="accordion-header">
+                  <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold" 
+                          data-bs-toggle="collapse" data-bs-target="#ai{{ loop.index }}"
+                          style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    {{ k.replace('_',' ').title() }}
+                  </button>
+                </h2>
+                <div id="ai{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                  <div class="accordion-body p-4">
+                    {{ v|safe }}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </section>
+          {% endif %}
+
+
+          <!-- RECOMMENDATIONS LIST -->
+          {% if report.recommendations %}
+          <section>
+            <h2 class="section-title">💡 Action Items</h2>
+            <div class="card p-4">
+              <ol>
+                {% for rec in report.recommendations %}
+                <li class="mb-2">{{ rec }}</li>
+                {% endfor %}
+              </ol>
+            </div>
+          </section>
+          {% endif %}
+
+          <!-- FOOTER -->
+          <div class="text-center mt-5 mb-4 text-muted">
+            <small>Generated on {{ report.metadata.generated_at }} | Trading Analysis System</small>
+          </div>
         </div>
 
-        <!-- Toast nudges (unchanged) -->
-        <div id="toastNudges" class="toast-container position-fixed bottom-0 end-0 p-3 no-print"></div>
-
+        <!-- Scripts -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.4" defer></script>
-        {% raw %}
         <script>
-        /* ===== Helper accessors ===== */
-        const rep = {{ report|tojson }};
-        const dm  = (rep && rep.detailed_metrics) ? rep.detailed_metrics : {};
+        const report = {{ report|tojson }};
 
-        /* ===== Theme toggle & JSON download ===== */
-        const root=document.documentElement;
-        (function initTheme(){root.setAttribute('data-theme',localStorage.getItem('theme')||'light');})();
-        document.getElementById('themeToggle')?.addEventListener('click',()=>{
-          const next=(root.getAttribute('data-theme')==='dark')?'light':'dark';
-          root.setAttribute('data-theme',next); localStorage.setItem('theme',next);
-        });
-        document.getElementById('jsonBtn')?.addEventListener('click',()=>{
-          const blob=new Blob([JSON.stringify(rep,null,2)],{type:'application/json'});
-          const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='trading_report.json'; a.click();
-        });
-
-        /* ===== DataTables for Open/Closed if present ===== */
-        window.addEventListener('DOMContentLoaded',()=>{
-          if (window.simpleDatatables){
-            const ot=document.getElementById('openTable');  if(ot){ new simpleDatatables.DataTable(ot,{perPage:10,perPageSelect:[10,25,50],fixedHeight:true}); }
-            const ct=document.getElementById('closedTable');if(ct){ new simpleDatatables.DataTable(ct,{perPage:10,perPageSelect:[10,25,50],fixedHeight:true}); }
+        // P&L Timeline Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
+        (function(){
+          const ctx = document.getElementById('pnlTimelineChart');
+          if(ctx) {
+            const data = report.web_data.charts.pnl_timeline;
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.dates || [],
+                datasets: [{
+                  label: 'P&L',
+                  data: data.values || [],
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.1)',
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                  }
+                }
+              }
+            });
           }
-        });
-
-        /* ===== Charts ===== */
-        function moneyFmt(v){return '₹'+Number(v).toLocaleString(undefined,{maximumFractionDigits:2});}
-
-        /* Equity Curve */
-        (function(){
-          if(!dm || !dm.pnl_timeline || !dm.pnl_timeline.dates || !dm.pnl_timeline.values) return;
-          const el=document.getElementById('pnlTimeline'); if(!el) return;
-          new Chart(el,{type:'line',data:{labels:dm.pnl_timeline.dates,datasets:[{label:'P&L',data:dm.pnl_timeline.values,fill:true,tension:.25}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:moneyFmt}}}});
         })();
+        {% endif %}
 
-        /* Persona Radar & Bars */
+        // Instrument Distribution Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
         (function(){
-          const traits = dm && dm.persona_traits ? dm.persona_traits : null;
-          if(!traits) return;
-          const rEl=document.getElementById('personaRadar');
-          if(rEl){ new Chart(rEl,{type:'radar',data:{labels:Object.keys(traits),datasets:[{data:Object.values(traits),label:'Traits',fill:true}]},options:{plugins:{legend:{display:false}},scales:{r:{min:0,max:1,grid:{color:'rgba(127,127,127,.3)'}}}}}); }
-          const bEl=document.getElementById('personaBars');
-          if(bEl){ new Chart(bEl,{type:'bar',data:{labels:Object.keys(traits).map(t=>t.replaceAll('_',' ').toUpperCase()),datasets:[{data:Object.values(traits)}]},options:{plugins:{legend:{display:false}},scales:{y:{min:0,max:1}}}); }
+          const ctx = document.getElementById('instrumentChart');
+          if(ctx) {
+            const data = report.web_data.charts.instrument_distribution;
+            new Chart(ctx, {
+              type: 'pie',
+              data: {
+                labels: data.map(d => d.name),
+                datasets: [{
+                  data: data.map(d => d.value),
+                  backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            });
+          }
         })();
+        {% endif %}
 
-        /* Hour & Weekday histograms */
+        // Persona Radar Chart
+        {% if report.web_data and report.web_data.persona_scores %}
         (function(){
-          const hEl=document.getElementById('hourHist'); const wEl=document.getElementById('weekdayHist');
-          if(hEl && Array.isArray(dm.hour_hist)){new Chart(hEl,{type:'bar',data:{labels:[...Array(24).keys()].map(h=>h+':00'),datasets:[{data:dm.hour_hist}]},options:{plugins:{legend:{display:false}}}});}
-          if(wEl && Array.isArray(dm.weekday_hist)){new Chart(wEl,{type:'bar',data:{labels:['Mon','Tue','Wed','Thu','Fri'],datasets:[{data:dm.weekday_hist}]},options:{plugins:{legend:{display:false}}}});}
+          const ctx = document.getElementById('personaRadarChart');
+          if(ctx) {
+            const scores = report.web_data.persona_scores;
+            new Chart(ctx, {
+              type: 'radar',
+              data: {
+                labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
+                datasets: [{
+                  label: 'Persona Traits',
+                  data: Object.values(scores).map(v => v * 100),
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.2)',
+                  borderWidth: 2,
+                  pointRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { stepSize: 20 }
+                  }
+                }
+              }
+            });
+          }
         })();
-
-        /* Allocation donut (if present) */
-        (function(){
-          const el=document.getElementById('allocationDonut'); if(!el || !dm || !dm.allocation) return;
-          const labels=Object.keys(dm.allocation), vals=Object.values(dm.allocation);
-          new Chart(el,{type:'doughnut',data:{labels,datasets:[{data:vals}]},options:{plugins:{legend:{position:'bottom'}}}});
-        })();
-
-        /* Realized vs Unrealized Gauge (doughnut style) */
-        (function(){
-          const el=document.getElementById('ruGauge'); if(!el) return;
-          const realized = Number(dm.total_realized_pnl||0);
-          const unreal   = Number(dm.total_unrealized_pnl||0);
-          const tot = Math.abs(realized)+Math.abs(unreal);
-          const rShare = tot ? Math.abs(realized)/tot*100 : 0;
-          new Chart(el,{type:'doughnut',data:{labels:['Realized','Unrealized'],datasets:[{data:[Math.abs(realized),Math.abs(unreal)]} ]},options:{cutout:'70%',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>ctx.label+': '+moneyFmt(ctx.parsed)}}}});
-          // Center text
-          Chart.register({id:'centerText',afterDraw(c,_,opts){const {ctx,chartArea:{width,height}}=c;ctx.save();ctx.font='700 16px system-ui';ctx.fillStyle=getComputedStyle(document.body).color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(rShare.toFixed(1)+'% Realized',c.width/2,c.height/2);ctx.restore();}});
-        })();
-
-        /* Recommendations dock animation */
-        (function(){
-          const container=document.getElementById('dockCarousel'); if(!container) return; let start=performance.now();
-          function animate(t){const speed=20; container.scrollLeft=(t/1000*speed)%(container.scrollWidth/2); requestAnimationFrame(animate);} requestAnimationFrame(animate);
-          container.addEventListener('mousemove',e=>{for(const it of container.querySelectorAll('.reco-item')){const r=it.getBoundingClientRect();const c=r.left+r.width/2;const dist=Math.abs(e.clientX-c);const scale=Math.max(1,1.6-Math.min(dist/150,1));it.style.transform=`scale(${scale})`;it.style.zIndex=scale>1.1?10:1;}});
-          container.addEventListener('mouseleave',()=>{for(const it of container.querySelectorAll('.reco-item')){it.style.transform='scale(1)';it.style.zIndex=1;}});
-        })();
-
-        /* Behavioral toast nudges */
-        (function(){
-          const toasts=[
-            {title:'Position Sizing', body:'Keep single-position risk < 2% of equity. 🧯'},
-            {title:'Breaks Help', body:'Two 5-min breaks per hour improve focus. ☕'},
-            {title:'Review Ritual', body:'Log 3 learnings after market close. 📓'}
-          ];
-          const wrap=document.getElementById('toastNudges'); if(!wrap) return;
-          toasts.forEach((t,i)=>{const el=document.createElement('div'); el.className='toast align-items-center mb-2'; el.role='alert'; el.innerHTML=`<div class="d-flex"><div class="toast-body"><strong>${t.title}:</strong> ${t.body}</div><button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button></div>`; wrap.appendChild(el); new bootstrap.Toast(el,{delay:4500+i*800}).show();});
-        })();
+        {% endif %}
         </script>
-        {% endraw %}
         </body>
         </html>
         """
@@ -754,14 +1772,50 @@ class ReportGenerator:
         env = Environment()
         template = env.from_string(html_template)
         html = template.render(report=report)
+
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
-
 
     # ---------------------------------------------------------------------
     # EXPORT JSON
     # ---------------------------------------------------------------------
     def export_json(self, report: Dict, filepath: str):
+        """Export report as JSON"""
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, default=str)
+
+
+# Example usage
+# def generate_comprehensive_report(metrics_data, patterns_data, analysis_data, trader_name="Trader"):
+#     """
+#     Generate a comprehensive trading report with all data
+#
+#     Parameters:
+#     - metrics_data: The second document data (all trading metrics)
+#     - patterns_data: The patterns dictionary from raw_patterns
+#     - analysis_data: The first document data containing analysis_text, summary_data, and web_data
+#     """
+#
+#     generator = ComprehensiveReportGenerator()
+#
+#     # Generate the report with all data
+#     report = generator.generate_report(
+#         metrics=metrics_data,
+#         patterns=patterns_data,
+#         analysis=analysis_data,
+#         trader_name=trader_name
+#     )
+#
+#     # Export to HTML
+#     generator.export_html(report, "trading_report_complete.html")
+#
+#     # Also export to JSON for data backup
+#     generator.export_json(report, "trading_report_complete.json")
+#
+#     return report
+#
+#
+# if __name__ == "__main__":
+#     print("Comprehensive Trading Report Generator ready!")
+#     print("Use generate_comprehensive_report(metrics, patterns, analysis) to create report")

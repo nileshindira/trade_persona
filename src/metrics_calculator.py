@@ -105,6 +105,65 @@ class TradingMetricsCalculator:
         if 'ema_allocation' in df.columns or any(col.startswith('ema_score') for col in df.columns):
             metrics['ema_enabled'] = True
 
+        # --- 🧩 NEW METRICS (added safely) ---
+        # Market / Price-action
+        metrics["avg_daily_range"] = (df["high"] - df["low"]).mean()
+        metrics["avg_close_to_open_return"] = ((df["close"] - df["open"]) / df["open"]).mean() * 100
+        metrics["volatility_index"] = (((df["high"] - df["low"]) / df["open"]).std() * 100)
+        metrics["volume_volatility"] = df["volume"].std() / df["volume"].mean() if df["volume"].mean() != 0 else 0
+        metrics["avg_volume_per_trade"] = df["volume"].mean()
+
+        # Score-based
+        for col in ["t_score", "f_score", "total_score"]:
+            if col in df.columns:
+                metrics[f"avg_{col}"] = df[col].mean()
+                metrics[f"{col}_volatility"] = df[col].std()
+
+        if "total_score" in df.columns:
+            score_mean = df["total_score"].mean()
+            metrics["high_score_win_rate"] = (df.loc[df["total_score"] > score_mean, "pnl"] > 0).mean() * 100
+            metrics["low_score_loss_rate"] = (df.loc[df["total_score"] < score_mean, "pnl"] <= 0).mean() * 100
+
+        # Technical hit rates
+        if "is_52week_high" in df.columns:
+            metrics["hit_rate_52w_high"] = df["is_52week_high"].mean() * 100
+        if "is_52week_low" in df.columns:
+            metrics["hit_rate_52w_low"] = df["is_52week_low"].mean() * 100
+        if "is_alltime_high" in df.columns:
+            metrics["hit_rate_alltime_high"] = df["is_alltime_high"].mean() * 100
+
+        # PnL Shape / Distribution
+        metrics["pnl_volatility"] = df["pnl"].std()
+        metrics["pnl_skewness"] = df["pnl"].skew()
+        metrics["pnl_kurtosis"] = df["pnl"].kurt()
+        metrics["value_at_risk_95"] = df["pnl"].quantile(0.05)
+
+        # Position / Holding behavior
+        if "holding_period" in df.columns:
+            metrics["avg_holding_period"] = df["holding_period"].mean()
+            metrics["holding_period_volatility"] = df["holding_period"].std()
+            metrics["avg_holding_period_winners"] = df.loc[df["pnl"] > 0, "holding_period"].mean()
+            metrics["avg_holding_period_losers"] = df.loc[df["pnl"] <= 0, "holding_period"].mean()
+
+        # Risk / Efficiency
+        metrics["return_on_capital"] = df["pnl"].sum() / df["trade_value"].sum() if "trade_value" in df.columns and df["trade_value"].sum() != 0 else 0
+        metrics["efficiency_ratio"] = df["pnl"].sum() / df["pnl"].abs().sum() if df["pnl"].abs().sum() != 0 else 0
+        metrics["r_multiple_avg"] = (df["pnl"] / df["trade_value"]).mean() if "trade_value" in df.columns else 0
+        metrics["downside_deviation"] = df.loc[df["pnl"] < 0, "pnl"].std()
+
+        # Behavioral Insights
+        if "trade_hour" in df.columns:
+            metrics["trade_timing_bias"] = df["trade_hour"].corr(df["pnl"])
+        if "volume" in df.columns and "trade_value" in df.columns:
+            metrics["volume_following_behavior"] = df["volume"].corr(df["trade_value"])
+        if "total_score" in df.columns:
+            metrics["score_alignment_effectiveness"] = df["total_score"].corr(df["pnl"])
+        if "pnl" in df.columns:
+            avg_win = df.loc[df["pnl"] > 0, "pnl"].mean()
+            avg_loss = df.loc[df["pnl"] < 0, "pnl"].mean()
+            metrics["reward_to_risk_balance"] = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
+
+
         return metrics
 
     # =========================================================
