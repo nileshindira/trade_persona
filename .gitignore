@@ -30,7 +30,7 @@ data/reports/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/reports/.gitkeep
-*.csv
+.csv
 *.xlsx
 *.json
 !config.yaml
