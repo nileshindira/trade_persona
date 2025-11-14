@@ -103,7 +103,7 @@ class TradingPersonaAnalyzer:
         # Step 5: Generate report
         logger.info("Generating report...")
         report = self.report_generator.generate_report(
-            metrics, patterns, analysis, trader_name
+            metrics, patterns, analysis, df, trader_name
         )
 
         # Step 6: Export report
