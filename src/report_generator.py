@@ -8,9 +8,9 @@ from typing import Dict, List
 from datetime import datetime
 from pathlib import Path
 import markdown
-from jinja2 import Template
+from jinja2 import Template, Environment
 import numpy as np
-
+import pandas as pd
 
 class ReportGenerator:
     """Generate polished HTML/JSON trading persona reports with visualization"""
@@ -21,7 +21,7 @@ class ReportGenerator:
     # ---------------------------------------------------------------------
     # MAIN REPORT BUILD
     # ---------------------------------------------------------------------
-    def generate_report(self, metrics: Dict, patterns: Dict, analysis: Dict, trader_name: str = "Trader") -> Dict:
+    def generate_report(self, metrics: Dict, patterns: Dict, analysis: Dict, df: pd.DataFrame, trader_name: str = "Trader") -> Dict:
         """Compose structured report dictionary with ALL data"""
 
         # Extract all components from analysis
@@ -1102,6 +1102,10 @@ class ReportGenerator:
                             <th class="text-end">Unrealized</th>
                             <th class="text-end">MTM %</th>
                             <th class="text-end">Holding Days</th>
+                            <th class="text-end">Buy T Score</th>
+                            <th class="text-end">Buy F Score</th>
+                            <th class="text-end">Sell T Score</th>
+                            <th class="text-end">Sell F Score</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1119,6 +1123,10 @@ class ReportGenerator:
                               {{ '%.2f'|format(p.pct_change or 0) }}%
                             </td>
                             <td class="text-end">{{ p.holding_days or '-' }}</td>
+                            <td class="text-end">{{ p.buy_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.buy_f_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_f_scores or '-' }}</td>
                           </tr>
                           {% endfor %}
                         </tbody>
@@ -1146,6 +1154,10 @@ class ReportGenerator:
                             <th class="text-end">Realized P&L</th>
                             <th class="text-end">Return %</th>
                             <th class="text-end">Holding Days</th>
+                            <th class="text-end">Buy T Score</th>
+                            <th class="text-end">Buy F Score</th>
+                            <th class="text-end">Sell T Score</th>
+                            <th class="text-end">Sell F Score</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1163,6 +1175,10 @@ class ReportGenerator:
                               {{ '%.2f'|format(p.return_pct or 0) }}%
                             </td>
                             <td class="text-end">{{ p.holding_days or '-' }}</td>
+                            <td class="text-end">{{ p.buy_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.buy_f_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_f_scores or '-' }}</td>
                           </tr>
                           {% endfor %}
                         </tbody>
@@ -1208,26 +1224,42 @@ class ReportGenerator:
                               <th class="text-end">P&L</th>
                               <th class="text-end">Days</th>
                               <th class="text-end">Return %</th>
+                              <th class="text-end">Buy T Score</th>
+                              <th class="text-end">Buy F Score</th>
+                              <th class="text-end">Sell T Score</th>
+                              <th class="text-end">Sell F Score</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {% for s in blk.list %}
-                              {% set det = (dm.symbol_details[s] if (dm.symbol_details and (s in dm.symbol_details)) else None) %}
-                              <tr>
-                                <td><strong>{{ s }}</strong></td>
-                                <td class="text-end">₹{{ '%.2f'|format((det.buy_rate if det and det.buy_rate is not none else 0)) }}</td>
-                                <td class="text-end">₹{{ '%.2f'|format((det.sell_rate if det and det.sell_rate is not none else (det.ltp if det and det.ltp is not none else 0))) }}</td>
-                                <td class="text-end">{{ det.qty if det and det.qty is not none else '-' }}</td>
-                                <td class="text-end">₹{{ '%.2f'|format((det.value if det and det.value is not none else 0)) }}</td>
-                                {% set pnlv = (det.pnl if det and det.pnl is not none else (det.unrealized if det and det.unrealized is not none else 0)) %}
-                                <td class="text-end fw-bold {{ 'text-success' if (pnlv or 0)>=0 else 'text-danger' }}">
-                                  ₹{{ '%.2f'|format(pnlv or 0) }}
-                                </td>
-                                <td class="text-end">{{ det.holding_days if det and det.holding_days is not none else '-' }}</td>
-                                <td class="text-end fw-bold {{ 'text-success' if (det.return_pct if det else 0)>=0 else 'text-danger' }}">
-                                  {{ '%.2f'|format((det.return_pct if det and det.return_pct is not none else 0)) }}%
-                                </td>
-                              </tr>
+                        {% for s in blk.list %}
+                            {% set sym = s.symbol %}
+                            {% set det = dm.symbol_details[sym] if dm.symbol_details and (sym in dm.symbol_details) else None %}
+                        
+                            <tr>
+                              <td><strong>{{ sym }}</strong></td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.buy_rate if det else 0) }}</td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.sell_rate if det else (det.ltp if det else 0)) }}</td>
+                              <td class="text-end">{{ det.qty if det else '-' }}</td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.value if det else 0) }}</td>
+                        
+                              {% set pnlv = det.pnl if det else 0 %}
+                              <td class="text-end fw-bold {{ 'text-success' if pnlv>=0 else 'text-danger' }}">
+                                ₹{{ '%.2f'|format(pnlv) }}
+                              </td>
+                        
+                              <td class="text-end">{{ det.holding_days if det else '-' }}</td>
+                        
+                              <td class="text-end fw-bold {{ 'text-success' if (det.return_pct if det else 0)>=0 else 'text-danger' }}">
+                                {{ '%.2f'|format(det.return_pct if det else 0) }}%
+                              </td>
+                        
+                              <td class="text-end">{{ det.buy_t_scores if det else '-' }}</td>
+                              <td class="text-end">{{ det.buy_f_scores if det else '-' }}</td>
+                              <td class="text-end">{{ det.sell_t_scores if det else '-' }}</td>
+                              <td class="text-end">{{ det.sell_f_scores if det else '-' }}</td>
+                            </tr>
+
+                  
                             {% endfor %}
                           </tbody>
                         </table>
@@ -1786,8 +1818,9 @@ class ReportGenerator:
             json.dump(report, f, indent=2, default=str)
 
 
+
 # Example usage
-# def generate_comprehensive_report(metrics_data, patterns_data, analysis_data, trader_name="Trader"):
+# def generate_comprehensive_report():
 #     """
 #     Generate a comprehensive trading report with all data
 #
@@ -1796,8 +1829,13 @@ class ReportGenerator:
 #     - patterns_data: The patterns dictionary from raw_patterns
 #     - analysis_data: The first document data containing analysis_text, summary_data, and web_data
 #     """
+#     metrics_data =
+#     patterns_data =
+#     analysis_data =
+#     trader_name = "Trader"
+#     generator = ReportGenerator()
 #
-#     generator = ComprehensiveReportGenerator()
+#
 #
 #     # Generate the report with all data
 #     report = generator.generate_report(
@@ -1814,8 +1852,9 @@ class ReportGenerator:
 #     generator.export_json(report, "trading_report_complete.json")
 #
 #     return report
-#
-#
+
+
 # if __name__ == "__main__":
+#     print(generate_comprehensive_report())
 #     print("Comprehensive Trading Report Generator ready!")
 #     print("Use generate_comprehensive_report(metrics, patterns, analysis) to create report")

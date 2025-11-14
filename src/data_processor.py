@@ -184,18 +184,20 @@ class TradingDataProcessor:
             buy_stack, sale_stack = [], []
 
             for i, row in symbol_trades.iterrows():
-                typ, qty, price, tdate = (
+                typ, qty, price, tdate, t_t_score, t_f_score = (
                     row["transaction_type"],
                     float(row["quantity"]),
                     float(row["price"]),
                     row["trade_date"],
+                    row["t_score"],
+                    row["f_score"]
                 )
 
                 # ===== LONG TRADES =====
                 if typ == "BUY":
                     remaining_qty, pnl_total, hold_total, hold_count = qty, 0.0, 0.0, 0
                     while remaining_qty > 0 and sale_stack:
-                        s_qty, s_price, s_date = sale_stack[0]
+                        s_qty, s_price, s_date, s_t_score, s_f_score = sale_stack[0]
                         matched = min(s_qty, remaining_qty)
                         pnl = (s_price - price) * matched
                         hold = (tdate - s_date).total_seconds() / 60
@@ -210,9 +212,13 @@ class TradingDataProcessor:
                                 "buy_date": s_date,
                                 "buy_price": s_price,
                                 "buy_qty": matched,
+                                "buy_score": t_t_score,
+                                "buy_f_score": t_f_score,
                                 "sell_date": tdate,
                                 "sell_price": price,
                                 "sell_qty": matched,
+                                "sell_score": s_t_score,
+                                "sell_f_score": s_f_score,
                                 "pnl": pnl,
                                 "status": "CLOSED",
                             }
@@ -224,18 +230,20 @@ class TradingDataProcessor:
                             sale_stack.pop(0)
                         else:
                             sale_stack[0][0] = s_qty
+                            sale_stack[0][3] = s_t_score
+                            sale_stack[0][4] = s_f_score
 
                     if pnl_total != 0:
                         df.loc[i, "pnl"] = pnl_total
                         df.loc[i, "holding_period_minutes"] = hold_total / max(hold_count, 1)
                     if remaining_qty > 0:
-                        buy_stack.append([remaining_qty, price, tdate])
+                        buy_stack.append([remaining_qty, price, tdate, t_t_score, t_f_score])
 
                 # ===== SHORT TRADES =====
                 elif typ == "SALE":
                     remaining_qty, pnl_total, hold_total, hold_count = qty, 0.0, 0.0, 0
                     while remaining_qty > 0 and buy_stack:
-                        b_qty, b_price, b_date = buy_stack[0]
+                        b_qty, b_price, b_date, b_t_score, b_f_score = buy_stack[0]
                         matched = min(b_qty, remaining_qty)
                         pnl = (price - b_price) * matched
                         hold = (tdate - b_date).total_seconds() / 60
@@ -249,9 +257,13 @@ class TradingDataProcessor:
                                 "buy_date": b_date,
                                 "buy_price": b_price,
                                 "buy_qty": matched,
+                                "buy_score": b_t_score,
+                                "buy_f_score": b_f_score,
                                 "sell_date": tdate,
                                 "sell_price": price,
                                 "sell_qty": matched,
+                                "sell_score": t_t_score,
+                                "sell_f_score": t_f_score,
                                 "pnl": pnl,
                                 "status": "CLOSED",
                             }
@@ -261,23 +273,28 @@ class TradingDataProcessor:
                         remaining_qty -= matched
                         if b_qty == 0:
                             buy_stack.pop(0)
+
                         else:
                             buy_stack[0][0] = b_qty
+                            buy_stack[0][3] = b_t_score
+                            buy_stack[0][4] = b_f_score
 
                     if pnl_total != 0:
                         df.loc[i, "pnl"] = pnl_total
                         df.loc[i, "holding_period_minutes"] = hold_total / max(hold_count, 1)
                     if remaining_qty > 0:
-                        sale_stack.append([remaining_qty, price, tdate])
+                        sale_stack.append([remaining_qty, price, tdate, t_t_score, t_f_score])
 
             # any leftover buys/sales → open positions
-            for qty, price, date in buy_stack:
+            for qty, price, date, t_score, f_score in buy_stack:
                 trade_pairs.append(
                     {
                         "symbol": symbol,
                         "buy_date": date,
                         "buy_price": price,
                         "buy_qty": qty,
+                        "buy_score": t_score,
+                        "buy_f_score": f_score,
                         "sell_date": None,
                         "sell_price": None,
                         "sell_qty": 0,
@@ -285,13 +302,15 @@ class TradingDataProcessor:
                         "status": "OPEN",
                     }
                 )
-            for qty, price, date in sale_stack:
+            for qty, price, date, t_score, f_score in sale_stack:
                 trade_pairs.append(
                     {
                         "symbol": symbol,
                         "buy_date": None,
                         "buy_price": None,
                         "buy_qty": 0,
+                        "buy_score": t_score,
+                        "buy_f_score": f_score,
                         "sell_date": date,
                         "sell_price": price,
                         "sell_qty": qty,

@@ -83,6 +83,13 @@ class OllamaAnalyzer:
         chart_data['instrument_distribution'] = [
             {'name': 'BankNifty', 'value': inst_cluster.get('banknifty_percentage', 0)},
             {'name': 'Nifty', 'value': inst_cluster.get('nifty_percentage', 0)},
+            {'name': 'Nifty Bank', 'value': inst_cluster.get('nifty_bank_percentage', 0)},
+            {'name': 'Nifty IT', 'value': inst_cluster.get('nifty_it_percentage', 0)},
+            {'name': 'Nifty FMCG', 'value': inst_cluster.get('nifty_fmcg_percentage', 0)},
+            {'name': 'Nifty Metal', 'value': inst_cluster.get('nifty_metal_percentage', 0)},
+            {'name': 'Nifty Pharma', 'value': inst_cluster.get('nifty_pharma_percentage', 0)},
+            {'name': 'Nifty PSU', 'value': inst_cluster.get('nifty_psu_percentage', 0)},
+            {'name': 'Nifty PSU', 'value': inst_cluster.get('nifty_psu_percentage', 0)},
             # Add other instruments as needed
         ]
 
