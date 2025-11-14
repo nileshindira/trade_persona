@@ -97,6 +97,8 @@ class TradingMetricsCalculator:
         metrics['buckets'] = pos['buckets']     # bucket analytics
         metrics['gainer'] = pos['gainer']       # counts + list of gainer symbols
         metrics['loser'] = pos['loser']         # counts + list of loser symbols
+        metrics['symbol_details'] = pos['symbol_details']
+
 
         # -------- Persona traits (existing) --------
         persona_traits = self.calculate_persona_traits(df)
