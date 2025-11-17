@@ -1,0 +1,32 @@
+<div class="card p-4 mb-4">
+    <h3 class="mb-3"><i class="bi bi-graph-up"></i> Performance Metrics</h3>
+
+    <div class="row g-4">
+
+        <div class="col-md-4">
+            <div class="metric-card">
+                <div class="metric-label">Profit Factor</div>
+                <div class="metric-value">
+                    {{ '%.2f'|format(report.detailed_metrics.profit_factor or 0) }}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="metric-card">
+                <div class="metric-label">Sharpe Ratio</div>
+                <div class="metric-value">{{ '%.2f'|format(report.detailed_metrics.sharpe_ratio or 0) }}</div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="metric-card">
+                <div class="metric-label">Max Drawdown</div>
+                <div class="metric-value text-danger">
+                    {{ '%.2f'|format(report.detailed_metrics.max_drawdown_pct or 0) }}%
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

@@ -1,0 +1,11 @@
+{% if report.recommendations %}
+<div class="card p-4 mb-4">
+    <h3 class="mb-3"><i class="bi bi-lightbulb"></i> Recommendations</h3>
+
+    <ol>
+    {% for item in report.recommendations %}
+        <li class="mb-2">{{ item }}</li>
+    {% endfor %}
+    </ol>
+</div>
+{% endif %}

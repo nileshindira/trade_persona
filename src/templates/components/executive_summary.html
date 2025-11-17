@@ -1,0 +1,25 @@
+<div class="card p-4 mb-4">
+    <h2 class="mb-3">📈 Executive Summary</h2>
+
+    <div class="row g-4">
+        <div class="col-md-3">
+            <div class="metric-value">{{ report.executive_summary.total_trades }}</div>
+            <div class="metric-label">Total Trades</div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="metric-value text-success">₹{{ report.executive_summary.net_pnl }}</div>
+            <div class="metric-label">Net P&L</div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="metric-value">{{ report.executive_summary.win_rate }}%</div>
+            <div class="metric-label">Win Rate</div>
+        </div>
+
+        <div class="col-md-3">
+            <span class="badge bg-info" style="font-size:1.1rem;">{{ report.executive_summary.risk_level }}</span>
+            <div class="metric-label mt-1">Risk Level</div>
+        </div>
+    </div>
+</div>

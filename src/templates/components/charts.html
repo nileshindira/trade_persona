@@ -1,0 +1,19 @@
+{% if report.web_data.charts %}
+<div class="card p-4 mb-4">
+    <h3 class="mb-3"><i class="bi bi-bar-chart"></i> Charts</h3>
+
+    {% if report.web_data.charts.pnl_timeline %}
+    <div class="mb-4">
+        <h5>P&L Timeline</h5>
+        <canvas id="pnlChart" height="250"></canvas>
+    </div>
+    {% endif %}
+
+    {% if report.web_data.charts.instrument_distribution %}
+    <div class="mb-4">
+        <h5>Instrument Distribution</h5>
+        <canvas id="instrumentChart" height="220"></canvas>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

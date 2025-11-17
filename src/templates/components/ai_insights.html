@@ -1,0 +1,27 @@
+{% if report.analysis_text %}
+<div class="card p-4 mb-4">
+    <h3><i class="bi bi-robot"></i> AI Insights</h3>
+
+    <div class="accordion" id="aiAccordion">
+        {% for key, html in report.analysis_text.items() %}
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button {{ 'collapsed' if not loop.first }}"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#ai{{ loop.index }}">
+                    {{ key.replace('_',' ').title() }}
+                </button>
+            </h2>
+
+            <div id="ai{{ loop.index }}"
+                 class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                <div class="accordion-body">
+                    {{ html | safe }}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endif %}

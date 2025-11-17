@@ -1,0 +1,33 @@
+/* DARK THEME */
+
+body {
+    background: #0d1117;
+    color: #e6edf3;
+}
+
+.card {
+    background: #161b22;
+}
+
+.metric-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+}
+
+.table {
+    color: #e6edf3;
+}
+
+.table-hover tbody tr:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.accordion-button {
+    background: #161b22;
+    color: #e6edf3;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #1f6feb !important;
+    color: white !important;
+}

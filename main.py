@@ -36,7 +36,7 @@ class TradingPersonaAnalyzer:
         self.metrics_calculator = TradingMetricsCalculator(self.config)
         self.pattern_detector = TradingPatternDetector(self.config)
         self.llm_analyzer = OllamaAnalyzer(self.config)
-        self.report_generator = ReportGenerator(self.config)
+        self.report_generator = ReportGenerator(config=self.config)
 
         # Initialize EMA calculator
         # try:

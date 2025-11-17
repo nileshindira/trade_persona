@@ -284,272 +284,319 @@ class TradingMetricsCalculator:
     # =========================================================
     def _compute_positions_snapshot(self, df: pd.DataFrame) -> Dict:
         """
-        Build symbol-level net position, avg cost, current price (best-available),
-        realised P&L (from 'pnl'), unrealised P&L (from open qty * (cur - cost) * side),
-        and rich bucket analytics.
+        Build symbol-level open/closed positions from already-classified df:
+          - Uses position_status (OPEN/CLOSED)
+          - Uses position_type (LONG-OPEN / SHORT-OPEN)
+          - Computes open MTM using LTP/close (hooks for expiry/intrinsic logic)
+          - Computes closed position aggregates and score lists
         """
-        # Identify latest day in the file (used as "current day")
-        latest_date = df['trade_date'].dt.date.max()
+        df = df.copy()
 
-        # Symbol aggregates to figure out net quantities and avg costs
-        # Treat BUY as +qty, SALE/SELL as -qty
-        q_sign = df['transaction_type'].map({'BUY': 1, 'SALE': -1}).fillna(0)
-        df['_signed_qty'] = df['quantity'] * q_sign
+        # Safety guard: if data_processor hasn't added these (old files), fall back
+        if "position_status" not in df.columns or "position_type" not in df.columns:
+            # Legacy fallback: treat any net_qty != 0 as OPEN
+            df["transaction_type"] = df["transaction_type"].astype(str).str.upper()
 
-        # Weighted average cost only for entries that add inventory (BUY for net long, SALE for net short)
-        def _avg_cost(series_price, series_qty):
-            q = series_qty.sum()
-            if q == 0:
+            def signed_qty(row):
+                t = row["transaction_type"]
+                if t == "BUY":
+                    return row["quantity"]
+                elif t in ("SALE", "SELL"):
+                    return -row["quantity"]
                 return 0.0
-            # Weighted by ABS quantity so both directions can be handled
-            w = np.abs(series_qty)
-            return float((series_price * w).sum() / w.sum())
 
-        # Last traded price fallback chain: 'ltp'/'current_price' columns > last trade price for symbol
-        price_cols = [c for c in df.columns if c.lower() in ('ltp', 'current_price')]
-        last_trade_price = df.sort_values('trade_date').groupby('symbol')['price'].last()
+            df["_signed_qty"] = df.apply(signed_qty, axis=1)
+            net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
+            df = df.merge(net, left_on="symbol", right_index=True, how="left")
+            df["position_status"] = df["symbol_net_qty"].apply(lambda q: "OPEN" if q != 0 else "CLOSED")
+            df["position_type"] = df["symbol_net_qty"].apply(
+                lambda q: "LONG-OPEN" if q > 0 else ("SHORT-OPEN" if q < 0 else "")
+            )
 
-        # Compute symbol-level ledger
-        sym = df.groupby('symbol').agg(
-            net_qty=('_signed_qty', 'sum'),
-            avg_cost=('price', lambda s: _avg_cost(s, df.loc[s.index, '_signed_qty'].clip(lower=0) +  # buys positive
-                                     (-df.loc[s.index, '_signed_qty']).clip(lower=0))                  # sales positive for weighting
-                      ),
-            last_price=('price', 'last')
+        # Latest date in file -> for day MTM
+        latest_date = df["trade_date"].dt.date.max()
 
-        )
-        # ---------------------- ADD FULL T/F SCORE LISTS (NO AVERAGING) ----------------------
-        def _extract_score_lists(g):
-            buy = g[g['transaction_type'] == 'BUY']
-            sell = g[g['transaction_type'] == 'SALE']
+        # Helper: get LTP / current price for each symbol
+        def get_symbol_ltp(g: pd.DataFrame) -> float:
+            # Prefer explicit LTP/current_price if present
+            for col in g.columns:
+                if col.lower() in ("ltp", "current_price"):
+                    s = g.sort_values("trade_date")[col].dropna()
+                    if len(s) > 0:
+                        return float(s.iloc[-1])
+            # Fallback to 'close' from DB
+            if "close" in g.columns:
+                s = g.sort_values("trade_date")["close"].dropna()
+                if len(s) > 0:
+                    return float(s.iloc[-1])
+            # Fallback to last trade price
+            s = g.sort_values("trade_date")["price"]
+            return float(s.iloc[-1])
 
-            return pd.Series({
-                'buy_t_scores': buy['t_score'].tolist(),
-                'buy_f_scores': buy['f_score'].tolist(),
-                'sell_t_scores': sell['t_score'].tolist(),
-                'sell_f_scores': sell['f_score'].tolist()
+        # Symbol-level aggregation
+        group = df.groupby("symbol")
+
+        sym_rows = []
+        for symbol, g in group:
+            g = g.sort_values("trade_date")
+
+            pos_status = g["position_status"].iloc[0]
+            pos_type = g["position_type"].iloc[0]
+            # BUY/SELL masks
+            buy_mask = g["transaction_type"] == "BUY"
+            sell_mask = g["transaction_type"].isin(["SALE", "SELL"])
+
+            buy_qty = g.loc[buy_mask, "quantity"].sum()
+            sell_qty = g.loc[sell_mask, "quantity"].sum()
+
+            buy_value = (g.loc[buy_mask, "price"] * g.loc[buy_mask, "quantity"]).sum()
+            sell_value = (g.loc[sell_mask, "price"] * g.loc[sell_mask, "quantity"]).sum()
+
+            buy_price = float(buy_value / buy_qty) if buy_qty > 0 else 0.0
+            sell_price = float(sell_value / sell_qty) if sell_qty > 0 else 0.0
+
+            ltp = get_symbol_ltp(g)
+
+            # Net qty = BUY - SELL
+            net_qty = float(buy_qty - sell_qty)
+
+            # Collect score lists (date-ordered)
+            if "t_score" in g.columns:
+                buy_t_scores = g.loc[buy_mask, "t_score"].dropna().tolist()
+                sell_t_scores = g.loc[sell_mask, "t_score"].dropna().tolist()
+            else:
+                buy_t_scores, sell_t_scores = [], []
+
+            if "f_score" in g.columns:
+                buy_f_scores = g.loc[buy_mask, "f_score"].dropna().tolist()
+                sell_f_scores = g.loc[sell_mask, "f_score"].dropna().tolist()
+            else:
+                buy_f_scores, sell_f_scores = [], []
+
+            sym_rows.append({
+                "symbol": symbol,
+                "position_status": pos_status,
+                "position_type": pos_type,
+                "net_qty": net_qty,
+                "buy_qty": float(buy_qty),
+                "sell_qty": float(sell_qty),
+                "buy_price": buy_price,
+                "sell_price": sell_price,
+                "ltp": ltp,
+                "buy_t_scores": buy_t_scores,
+                "buy_f_scores": buy_f_scores,
+                "sell_t_scores": sell_t_scores,
+                "sell_f_scores": sell_f_scores,
             })
 
-        score_lists = df.groupby('symbol').apply(_extract_score_lists)
+        sym_df = pd.DataFrame(sym_rows).set_index("symbol")
 
-        # Merge scores into the symbol-level ledger
-        sym = sym.merge(score_lists, left_index=True, right_index=True, how='left')
-        # -------------------------------------------------------------------------------------
+        # =========================
+        # OPEN POSITIONS (LONG-OPEN / SHORT-OPEN)
+        # =========================
+        sym_open = sym_df[sym_df["position_status"] == "OPEN"].copy()
 
-        # Try to override last_price with explicit LTP/current_price if present (take last non-null)
-        if price_cols:
-            for col in price_cols:
-                latest_px = df.sort_values('trade_date').groupby('symbol')[col].last()
-                sym['last_price'] = latest_px.fillna(sym['last_price'])
+        # Compute invested value, unrealized, mtm_pct
+        invested_values = []
+        unrealized_values = []
+        pct_changes = []
 
-        # If anything still missing, fallback to last_trade_price (already set)
-        sym['last_price'] = sym['last_price'].fillna(last_trade_price)
+        for symbol, row in sym_open.iterrows():
+            net_qty = row["net_qty"]
+            pos_type = row["position_type"]
+            ltp = row["ltp"]
 
-        # Determine open positions (non-zero net_qty)
-        sym['side'] = np.where(sym['net_qty'] > 0, 1, np.where(sym['net_qty'] < 0, -1, 0))
-        sym_open = sym[sym['net_qty'] != 0].copy()
+            if pos_type == "LONG-OPEN":
+                # Long open qty is net_qty > 0
+                open_qty = abs(net_qty)
+                entry_price = row["buy_price"]
+                invested = open_qty * entry_price
 
+                # 👉 MTM from LTP (hook for intrinsic if post-expiry)
+                unreal = (ltp - entry_price) * open_qty
 
-        # Compute unrealized P&L for open positions
-        # For long: (last - cost) * qty; for short: (cost - last) * abs(qty)
-        sym_open['invested_value'] = np.abs(sym_open['net_qty']) * sym_open['avg_cost']
-        sym_open['unrealized'] = np.where(
-            sym_open['side'] >= 0,
-            (sym_open['last_price'] - sym_open['avg_cost']) * np.abs(sym_open['net_qty']),
-            (sym_open['avg_cost'] - sym_open['last_price']) * np.abs(sym_open['net_qty'])
-        )
-        # % change on open positions (relative to cost)
-        sym_open['pct_change'] = np.where(
-            sym_open['invested_value'] > 0,
-            sym_open['unrealized'] / sym_open['invested_value'] * 100,
-            0.0
-        )
+            elif pos_type == "SHORT-OPEN":
+                # Short open qty is |net_qty| (more SELL than BUY)
+                open_qty = abs(net_qty)
+                entry_price = row["sell_price"]
+                invested = open_qty * entry_price
 
-        sym_closed = sym[sym['net_qty'] == 0].copy()
-        # Realized totals (from matched trades already in df['pnl'])
-        total_realized = float(df['pnl'].sum())
-        # Day MTM (realised on the latest date present in file)
-        day_mtm_realized = float(df.loc[df['trade_date'].dt.date == latest_date, 'pnl'].sum())
+                # 👉 MTM from LTP (short premium trade)
+                unreal = (entry_price - ltp) * open_qty
 
-        # Investment value (open)
-        total_investment_value = float(sym_open['invested_value'].sum())
-        total_unrealized = float(sym_open['unrealized'].sum())
-        total_pnl_combined = total_realized + total_unrealized
+            else:
+                open_qty = 0
+                invested = 0.0
+                unreal = 0.0
 
-        # Gainer / Loser (symbol-level net including unrealized if open)
+            invested_values.append(invested)
+            unrealized_values.append(unreal)
+            pct_changes.append(float(unreal / invested * 100) if invested > 0 else 0.0)
+
+        sym_open["invested_value"] = invested_values
+        sym_open["unrealized"] = unrealized_values
+        sym_open["pct_change"] = pct_changes
+
+        # ======== OPEN POSITIONS LIST FOR UI ========
+        positions = []
+        for symbol, r in sym_open.sort_values("pct_change").iterrows():
+            # For LONG-OPEN we take last buy-side scores; for SHORT-OPEN last sell-side scores
+            if r["position_type"] == "LONG-OPEN":
+                t_score = r["buy_t_scores"][-1] if r["buy_t_scores"] else 0
+                f_score = r["buy_f_scores"][-1] if r["buy_f_scores"] else 0
+                txn = "BUY"
+            else:  # SHORT-OPEN
+                t_score = r["sell_t_scores"][-1] if r["sell_t_scores"] else 0
+                f_score = r["sell_f_scores"][-1] if r["sell_f_scores"] else 0
+                txn = "SELL"
+
+            positions.append({
+                "symbol": symbol,
+                "transaction_type": txn,  # BUY for LONG-OPEN, SELL for SHORT-OPEN
+                "rate": float(r["buy_price"] if txn == "BUY" else r["sell_price"]),
+                "qty": int(abs(r["net_qty"])),
+                "value": float(r["invested_value"]),
+                "unrealized": float(r["unrealized"]),
+                "mtm_pct": float(r["pct_change"]),
+                "holding_days": 0,  # TODO: wire from pair_trades if you want true holding days
+                "t_score": float(t_score),
+                "f_score": float(f_score),
+            })
+
+        # =========================
+        # CLOSED POSITIONS (your new required schema)
+        # =========================
+        sym_closed = sym_df[sym_df["position_status"] == "CLOSED"].copy()
+        realized_by_symbol = df.groupby("symbol")["pnl"].sum()
 
         closed_positions = []
-        realized_by_symbol = df.groupby('symbol')['pnl'].sum()
-
         for symbol, r in sym_closed.iterrows():
             closed_positions.append({
-                'symbol': symbol,
-                'net_qty': int(r['net_qty']),
-                'avg_cost': float(r['avg_cost']),
-                'last_price': float(r['last_price']),
-                'realized_pnl': float(realized_by_symbol.get(symbol, 0.0)),
-                'pct_change': float(
-                    (realized_by_symbol.get(symbol, 0.0) / df.loc[
-                        df['symbol'] == symbol, 'trade_value'].abs().sum() * 100)
-                    if df.loc[df['symbol'] == symbol, 'trade_value'].abs().sum() > 0 else 0.0
-                ),
-
-                # ---------------- Added full score lists ----------------
-                'buy_t_scores': r['buy_t_scores'],
-                'buy_f_scores': r['buy_f_scores'],
-                'sell_t_scores': r['sell_t_scores'],
-                'sell_f_scores': r['sell_f_scores']
-                # ---------------------------------------------------------
+                "symbol": symbol,
+                "buy_price": float(r["buy_price"]),
+                "buy_qty": float(r["buy_qty"]),
+                "sell_price": float(r["sell_price"]),
+                "sell_qty": float(r["sell_qty"]),
+                "realized_pnl": float(realized_by_symbol.get(symbol, 0.0)),
+                "buy_t_scores": r["buy_t_scores"],
+                "buy_f_scores": r["buy_f_scores"],
+                "sell_t_scores": r["sell_t_scores"],
+                "sell_f_scores": r["sell_f_scores"],
             })
 
-        sym_all = []
-        # Merge realized per symbol
-        realized_by_symbol = df.groupby('symbol')['pnl'].sum()
-        for symbol, row in sym.iterrows():
-            net_open_unrl = 0.0
-            if symbol in sym_open.index:
-                net_open_unrl = float(sym_open.loc[symbol, 'unrealized'])
-            sym_all.append((symbol, float(realized_by_symbol.get(symbol, 0.0) + net_open_unrl)))
-        # Also include symbols that only had realized and are closed
-        for symbol in realized_by_symbol.index:
-            if symbol not in dict(sym_all):
-                sym_all.append((symbol, float(realized_by_symbol[symbol])))
+        # =========================
+        # Totals, Gainers/Losers & Buckets
+        # =========================
+        total_realized = float(realized_by_symbol.sum())
+        total_unrealized = float(sym_open["unrealized"].sum())
+        total_pnl_combined = total_realized + total_unrealized
+        total_investment_value = float(sym_open["invested_value"].sum())
 
-        gainers = [s for s, v in sym_all if v > 0]
-        losers = [s for s, v in sym_all if v < 0]
+        # Day MTM = realized pnl on latest trading date in file
+        day_mtm_realized = float(df.loc[df["trade_date"].dt.date == latest_date, "pnl"].sum())
 
-        # Average gainer/loser %: explicit % using symbol-level % return
-        # Define symbol % return as total_pnl_symbol / (sum(abs(buy_qty))*avg_cost) if open, else realised denominator:
-        sym_pct = []
-        for symbol in set(list(realized_by_symbol.index) + list(sym_open.index)):
+        open_sym_count = int(sym_open.shape[0])
+        avg_realized_per_stock = total_realized / realized_by_symbol.index.nunique() if realized_by_symbol.index.nunique() > 0 else 0.0
+        avg_unrealized_per_open_stock = total_unrealized / open_sym_count if open_sym_count > 0 else 0.0
+
+        # Gainer / loser classification including unrealized for open
+        sym_all_total = []
+        for symbol, r in sym_df.iterrows():
             realized = float(realized_by_symbol.get(symbol, 0.0))
+            open_unreal = float(sym_open.loc[symbol, "unrealized"]) if symbol in sym_open.index else 0.0
+            sym_all_total.append((symbol, realized + open_unreal))
+
+        gainers = [s for s, v in sym_all_total if v > 0]
+        losers = [s for s, v in sym_all_total if v < 0]
+
+        # Avg gainer/loser % using pct_change/open returns if available
+        sym_pct = []
+        for symbol, r in sym_df.iterrows():
             if symbol in sym_open.index:
-                inv = float(sym_open.loc[symbol, 'invested_value'])
-                unrl = float(sym_open.loc[symbol, 'unrealized'])
-                denom = inv if inv > 0 else np.nan
-                total_sym = realized + unrl
+                denom = sym_open.loc[symbol, "invested_value"]
+                total_sym = realized_by_symbol.get(symbol, 0.0) + sym_open.loc[symbol, "unrealized"]
             else:
-                # fallback: denominator as sum of absolute trade_value for that symbol
-                denom = float(df.loc[df['symbol'] == symbol, 'trade_value'].abs().sum()) or np.nan
-                total_sym = realized
-            pct = (total_sym / denom * 100) if (denom and denom > 0) else np.nan
+                denom = df.loc[df["symbol"] == symbol, "trade_value"].abs().sum()
+                total_sym = realized_by_symbol.get(symbol, 0.0)
+
+            pct = (total_sym / denom * 100) if denom and denom > 0 else float("nan")
             sym_pct.append((symbol, pct))
 
-        gainer_pct = [p for s, p in sym_pct if s in gainers and p == p]
-        loser_pct = [p for s, p in sym_pct if s in losers and p == p]
+        gainer_pct = [p for (s, p) in sym_pct if s in gainers and p == p]
+        loser_pct = [p for (s, p) in sym_pct if s in losers and p == p]
         avg_gainer_pct = float(np.mean(gainer_pct)) if gainer_pct else 0.0
         avg_loser_pct = float(np.mean(loser_pct)) if loser_pct else 0.0
 
-        # Close Pos Booked SL %: only loss-making realised trades proportion
-        realized_trades = df[df['pnl'] != 0]
-        sl_trades = realized_trades[realized_trades['pnl'] < 0]
-        close_pos_booked_sl_pct = float(len(sl_trades) / len(realized_trades) * 100) if len(realized_trades) > 0 else 0.0
-
-        # Averages requested:
-        # Avg Realized PL per stock = Total Realized / unique symbols traded
-        uniq_sym_traded = realized_by_symbol.index.nunique()
-        avg_realized_per_stock = total_realized / uniq_sym_traded if uniq_sym_traded > 0 else 0.0
-        # Avg Unrealized per open stock = Total Unrealized / number of open symbols
-        open_sym_count = sym_open.index.nunique()
-        avg_unrealized_per_open_stock = total_unrealized / open_sym_count if open_sym_count > 0 else 0.0
+        # Close Pos Booked SL %: proportion of losing realized trades
+        realized_trades = df[df["pnl"] != 0]
+        sl_trades = realized_trades[realized_trades["pnl"] < 0]
+        close_pos_booked_sl_pct = float(len(sl_trades) / len(realized_trades) * 100) if len(
+            realized_trades) > 0 else 0.0
 
         # Buckets on open positions by pct change
-        buckets = self._build_open_buckets(sym_open)
-
-        # Build positions list for report
-        positions = []
-        for symbol, r in sym_open.sort_values('pct_change').iterrows():
-            positions.append({
-                'symbol': symbol,
-                'net_qty': int(r['net_qty']),
-                'avg_cost': float(r['avg_cost']),
-                'last_price': float(r['last_price']),
-                'invested_value': float(r['invested_value']),
-                'unrealized': float(r['unrealized']),
-                'pct_change': float(r['pct_change']),
-                'buy_t_scores': r['buy_t_scores'],
-                'buy_f_scores': r['buy_f_scores'],
-                'sell_t_scores': r['sell_t_scores'],
-                'sell_f_scores': r['sell_f_scores']
-            })
+        buckets = self._build_open_buckets(sym_open) if not sym_open.empty else self._build_open_buckets(sym_open)
 
         aggregates = {
-            # headline totals
-            'total_trades': int(len(df)),
-            'day_mtm': day_mtm_realized,  # realised MTM for latest day in file
-            'total_realized_pnl': total_realized,
-            'total_unrealized_pnl': total_unrealized,
-            'total_pnl_combined': total_pnl_combined,
-            'total_investment_value_open': total_investment_value,
-
-            # averages
-            'avg_realized_pl_per_stock': avg_realized_per_stock,
-            'avg_unrealized_pl_per_open_stock': avg_unrealized_per_open_stock,
-
-            # SL %
-            'close_pos_booked_sl_pct': close_pos_booked_sl_pct,
-
-            # OPEN POSITION count (symbols)
-            'open_positions_count': int(open_sym_count),
-
-            # gainer/loser overview
-            'avg_gainer_pct': avg_gainer_pct,
-            'avg_loser_pct': avg_loser_pct,
+            "total_trades": int(len(df)),
+            "day_mtm": day_mtm_realized,
+            "total_realized_pnl": total_realized,
+            "total_unrealized_pnl": total_unrealized,
+            "total_pnl_combined": total_pnl_combined,
+            "total_investment_value_open": total_investment_value,
+            "avg_realized_pl_per_stock": avg_realized_per_stock,
+            "avg_unrealized_pl_per_open_stock": avg_unrealized_per_open_stock,
+            "close_pos_booked_sl_pct": close_pos_booked_sl_pct,
+            "open_positions_count": open_sym_count,
+            "avg_gainer_pct": avg_gainer_pct,
+            "avg_loser_pct": avg_loser_pct,
         }
 
-        gainer = {'count': len(gainers), 'list': sorted(gainers)}
-        loser = {'count': len(losers), 'list': sorted(losers)}
-        # ---------------------------------------------------------------
-        # Build symbol details for each symbol (used in gainers/losers UI)
-        # ---------------------------------------------------------------
+        # Build symbol_details (for side panels)
         symbol_details = {}
-
-        for symbol, row in sym.iterrows():
-            is_open = symbol in sym_open.index
-            is_closed = symbol in sym_closed.index
-
-            # compute values
-            if is_open:
-                net_qty = int(sym_open.loc[symbol, 'net_qty'])
-                avg_cost = float(sym_open.loc[symbol, 'avg_cost'])
-                last_price = float(sym_open.loc[symbol, 'last_price'])
-                value = float(sym_open.loc[symbol, 'invested_value'])
-                pnl = float(sym_open.loc[symbol, 'unrealized'])
-                return_pct = float(sym_open.loc[symbol, 'pct_change'])
-                holding_days = 0  # if you compute this elsewhere, replace
+        for symbol, r in sym_df.iterrows():
+            if symbol in sym_open.index:
+                # Use open metrics
+                o = sym_open.loc[symbol]
+                net_qty = o["net_qty"]
+                entry_price = o["buy_price"] if o["position_type"] == "LONG-OPEN" else o["sell_price"]
+                value = o["invested_value"]
+                pnl = o["unrealized"]
+                return_pct = o["pct_change"]
             else:
-                # closed position
-                df_sym = df[df['symbol'] == symbol]
-                net_qty = int(0)
-                avg_cost = float(row['avg_cost'])
-                last_price = float(row['last_price'])
-                value = float(df_sym['trade_value'].abs().sum())
-                pnl = float(realized_by_symbol[symbol])
-                return_pct = float((pnl / value * 100) if value > 0 else 0)
-                holding_days = 0  # replace if available
+                # Use closed metrics
+                df_sym = df[df["symbol"] == symbol]
+                net_qty = 0
+                entry_price = r["buy_price"]
+                value = df_sym["trade_value"].abs().sum()
+                pnl = realized_by_symbol.get(symbol, 0.0)
+                return_pct = (pnl / value * 100) if value > 0 else 0.0
 
             symbol_details[symbol] = {
-                "buy_rate": avg_cost,
-                "sell_rate": last_price,
-                "qty": net_qty,
-                "value": value,
-                "pnl": pnl,
-                "return_pct": return_pct,
-                "holding_days": holding_days,
-                "buy_t_scores": row['buy_t_scores'],
-                "buy_f_scores": row['buy_f_scores'],
-                "sell_t_scores": row['sell_t_scores'],
-                "sell_f_scores": row['sell_f_scores'],
+                "symbol": symbol,
+                "buy_rate": float(r["buy_price"]),
+                "sell_rate": float(r["sell_price"]),
+                "qty": int(net_qty),
+                "value": float(value),
+                "pnl": float(pnl),
+                "days": 0,  # TODO: derive from pair_trades if needed
+                "return_pct": float(return_pct),
+                "buy_t_score": r["buy_t_scores"][0] if r["buy_t_scores"] else 0,
+                "buy_f_score": r["buy_f_scores"][0] if r["buy_f_scores"] else 0,
+                "sell_t_score": r["sell_t_scores"][0] if r["sell_t_scores"] else 0,
+                "sell_f_score": r["sell_f_scores"][0] if r["sell_f_scores"] else 0,
             }
 
+        gainer = {"count": len(gainers), "list": sorted(gainers)}
+        loser = {"count": len(losers), "list": sorted(losers)}
+
         return {
-            'aggregates': aggregates,
-            'closed_positions': closed_positions,
-            'positions': positions,
-            'buckets': buckets,
-            'gainer': gainer,
-            'loser': loser,
-            'symbol_details': symbol_details
+            "aggregates": aggregates,
+            "closed_positions": closed_positions,
+            "positions": positions,  # open positions
+            "buckets": buckets,
+            "gainer": gainer,
+            "loser": loser,
+            "symbol_details": symbol_details,
         }
 
     def _build_open_buckets(self, sym_open: pd.DataFrame) -> Dict[str, Dict]:

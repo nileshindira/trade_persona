@@ -1,0 +1,80 @@
+<div class="card p-4 mb-4">
+    <h3 class="mb-3"><i class="bi bi-box-seam"></i> Positions</h3>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#open-pos">Open Positions</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#closed-pos">Closed Positions</a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- OPEN POSITIONS -->
+        <div class="tab-pane fade show active" id="open-pos">
+            {% if report.detailed_metrics.open_positions %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Qty</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">Unrealized</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in report.detailed_metrics.open_positions %}
+                        <tr>
+                            <td>{{ p.symbol }}</td>
+                            <td>{{ p.qty }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.value or 0) }}</td>
+                            <td class="text-end {{ 'text-success' if (p.unrealized or 0)>=0 else 'text-danger' }}">
+                                ₹{{ '%.2f'|format(p.unrealized or 0) }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">No open positions.</div>
+            {% endif %}
+        </div>
+
+        <!-- CLOSED POSITIONS -->
+        <div class="tab-pane fade" id="closed-pos">
+            {% if report.detailed_metrics.closed_positions %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th class="text-end">Realized P&L</th>
+                            <th class="text-end">Return %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for p in report.detailed_metrics.closed_positions %}
+                        <tr>
+                            <td>{{ p.symbol }}</td>
+                            <td class="text-end {{ 'text-success' if (p.unrealized or 0)>=0 else 'text-danger' }}">
+                                ₹{{ '%.2f'|format(p.unrealized or 0) }}
+                            </td>
+                            <td class="text-end {{ 'text-success' if (p.pct_change or 0)>=0 else 'text-danger' }}">
+                                {{ '%.2f'|format(p.pct_change or 0) }}%
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">No closed positions.</div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>

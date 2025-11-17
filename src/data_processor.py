@@ -93,7 +93,7 @@ class TradingDataProcessor:
     # Data Loading
     # =========================================================
     def load_data(self, filepath: str, source_type: str = "csv") -> pd.DataFrame:
-        """Load trading data from file"""
+        """Load trading data from file + enrich + clean + classify positions."""
         try:
             if source_type == "csv":
                 df = pd.read_csv(filepath)
@@ -105,8 +105,18 @@ class TradingDataProcessor:
                 raise ValueError(f"Unsupported source type: {source_type}")
 
             self.logger.info(f"📂 Loaded {len(df)} records from {filepath}")
+
+            # 1) Add DB scores/technicals
             df = self.getadditionaldata(df)
+
+            # 2) Clean & normalize
+            df = self.clean_data(df)
+
+            # 3) Classify positions (OPEN/CLOSED and LONG-OPEN/SHORT-OPEN)
+            df = self.classify_positions(df)
+
             return df
+
         except Exception as e:
             self.logger.error(f"❌ Error loading data: {str(e)}")
             raise
@@ -397,3 +407,109 @@ class TradingDataProcessor:
             .rename(columns={"symbol": "num_trades"})
         )
         return daily_stats
+
+    def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Classify each symbol into OPEN / CLOSED positions
+        and each trade row into OPEN-LEG or CLOSED-LEG.
+
+        Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
+        """
+        df = df.copy()
+        df["transaction_type"] = df["transaction_type"].str.upper()
+
+        # ----- Compute net qty at SYMBOL level -----
+        df["_signed_qty"] = df.apply(
+            lambda r: r["quantity"] if r["transaction_type"] == "BUY"
+            else -r["quantity"],
+            axis=1
+        )
+
+        symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
+
+        # merge net qty into df
+        df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+
+        # ----- Position status -----
+        df["position_status"] = df["symbol_net_qty"].apply(
+            lambda q: "OPEN" if q != 0 else "CLOSED"
+        )
+
+        # ----- Long / Short / Mixed classification -----
+        # long if buys > sells, short if sells > buys
+
+        def classify_direction(g):
+            buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
+            sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
+
+            if buy_qty > sell_qty:
+                return "LONG"
+            elif sell_qty > buy_qty:
+                return "SHORT"
+            else:
+                return "MIXED"  # equal qty or hedged structure
+
+        direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
+        df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
+
+        # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
+        df["row_trade_category"] = df.apply(
+            lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
+            axis=1
+        )
+
+        # cleanup
+        df.drop(columns=["_signed_qty"], inplace=True)
+
+        return df
+
+    def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Classify each symbol into OPEN/CLOSED and LONG-OPEN/SHORT-OPEN
+        based on net quantity (BUY - SELL).
+        This removes ambiguity for MetricsCalculator.
+        """
+        df = df.copy()
+        df["transaction_type"] = df["transaction_type"].astype(str).str.upper()
+
+        # Treat both 'SALE' and 'SELL' as sell side
+        def signed_qty(row):
+            typ = row["transaction_type"]
+            if typ == "BUY":
+                return row["quantity"]
+            elif typ in ("SALE", "SELL"):
+                return -row["quantity"]
+            return 0.0
+
+        df["_signed_qty"] = df.apply(signed_qty, axis=1)
+
+        # --- SYMBOL-LEVEL NET QTY ---
+        symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
+        df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+
+        # --- POSITION STATUS: OPEN/CLOSED ---
+        df["position_status"] = df["symbol_net_qty"].apply(
+            lambda q: "OPEN" if q != 0 else "CLOSED"
+        )
+
+        # --- POSITION TYPE: LONG-OPEN / SHORT-OPEN (only meaningful when OPEN) ---
+        def classify_pos_type(q, status):
+            if status == "OPEN":
+                if q > 0:
+                    return "LONG-OPEN"
+                elif q < 0:
+                    return "SHORT-OPEN"
+            return ""  # for CLOSED or zero
+
+        df["position_type"] = df.apply(
+            lambda r: classify_pos_type(r["symbol_net_qty"], r["position_status"]),
+            axis=1,
+        )
+
+        # Optional: mark each row as part of an open-leg or closed-leg ecosystem
+        df["row_trade_category"] = df["position_status"].map(
+            lambda s: "OPEN-LEG" if s == "OPEN" else "CLOSED-LEG"
+        )
+
+        df.drop(columns=["_signed_qty"], inplace=True)
+        return df

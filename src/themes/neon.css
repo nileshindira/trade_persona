@@ -1,0 +1,37 @@
+/* NEON THEME */
+
+body {
+    background: #000000;
+    color: #00eaff;
+}
+
+.card {
+    background: #0a0f1e;
+    border: 1px solid #00eaff;
+}
+
+.metric-card {
+    background: #000000;
+    border: 1px solid #00eaff;
+}
+
+.metric-value {
+    color: #00ffc6 !important;
+}
+
+.metric-label {
+    color: #00a3ff !important;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #001f3f !important;
+    color: #00eaff !important;
+}
+
+.table {
+    color: #00eaff;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 255, 255, 0.13);
+}

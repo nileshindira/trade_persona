@@ -1,0 +1,19 @@
+/* LIGHT THEME */
+
+body {
+    background: #f4f6f9;
+    color: #1f2937;
+}
+
+.card {
+    background: #ffffff;
+}
+
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+}
+
+.table {
+    color: #1f2937;
+}
