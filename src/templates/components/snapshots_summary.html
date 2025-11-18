@@ -1,0 +1,48 @@
+          <!-- ===== SNAPSHOT SUMMARY ===== -->
+          <section id="snapshot">
+            <h4 class="section-title"><i class="bi bi-speedometer2"></i> P&L Snapshot</h4>
+            <div class="row g-3 mb-3">
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Investment</div>
+                  <h5>₹{{ '%.2f'|format(report.detailed_metrics.total_investment_value_open or 0) }}</h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Realized</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_realized_pnl or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_realized_pnl or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Unrealized</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_unrealized_pnl or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_unrealized_pnl or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Total P&L</div>
+                  <h5 class="{{ 'text-success' if (report.detailed_metrics.total_pnl_combined or 0) >=0 else 'text-danger' }}">
+                    ₹{{ '%.2f'|format(report.detailed_metrics.total_pnl_combined or 0) }}
+                  </h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">ROI %</div>
+                  <h5>{{ '%.2f'|format(((report.detailed_metrics.total_pnl_combined or 0)/((report.detailed_metrics.total_investment_value_open or 0) if (report.detailed_metrics.total_investment_value_open or 0)!=0 else 1)*100)) }}%</h5>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <div class="card p-3 text-center h-100">
+                  <div class="small-muted">Booked SL %</div>
+                  <h5>{{ '%.1f'|format(report.detailed_metrics.close_pos_booked_sl_pct or 0) }}%</h5>
+                </div>
+              </div>
+            </div>
+          </section>

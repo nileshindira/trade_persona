@@ -1,0 +1,44 @@
+          <section id="detailed_pattern_analysis" class="mt-4">
+            <!-- Raw Patterns -->
+            {% if report.web_data.raw_patterns %}
+            <div class="card p-4">
+              <h4 class="mb-3">Detailed Pattern Analysis</h4>
+              <div class="accordion" id="patternsAccordion">
+                {% for pattern_name, pattern_data in report.web_data.raw_patterns.items() %}
+                <div class="accordion-item">
+                  <h2 class="accordion-header">
+                    <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#pattern{{ loop.index }}">
+                      {{ pattern_name.replace('_', ' ').title() }}
+                      {% if pattern_data.detected %}
+                        <span class="badge bg-danger ms-2">Detected</span>
+                      {% endif %}
+                    </button>
+                  </h2>
+                  <div id="pattern{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                    <div class="accordion-body">
+                      <table class="data-table">
+                        <tbody>
+                          {% for key, value in pattern_data.items() %}
+                          <tr>
+                            <td width="30%"><strong>{{ key.replace('_', ' ').title() }}:</strong></td>
+                            <td>
+                              {% if value is mapping %}
+                                <pre>{{ value|tojson(indent=2) }}</pre>
+                              {% elif value is iterable and value is not string %}
+                                {{ value|join(', ') }}
+                              {% else %}
+                                {{ value }}
+                              {% endif %}
+                            </td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </section>

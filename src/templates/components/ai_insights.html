@@ -1,27 +1,25 @@
-{% if report.analysis_text %}
-<div class="card p-4 mb-4">
-    <h3><i class="bi bi-robot"></i> AI Insights</h3>
-
-    <div class="accordion" id="aiAccordion">
-        {% for key, html in report.analysis_text.items() %}
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button {{ 'collapsed' if not loop.first }}"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#ai{{ loop.index }}">
-                    {{ key.replace('_',' ').title() }}
-                </button>
-            </h2>
-
-            <div id="ai{{ loop.index }}"
-                 class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
-                <div class="accordion-body">
-                    {{ html | safe }}
+          <!-- ===== AI INSIGHTS ===== -->
+          {% if report.ai_analysis %}
+          <section id="ai" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-robot"></i> AI-Generated Insights</h4>
+            <div class="accordion" id="aiAcc">
+              {% for k,v in report.ai_analysis.items() %}
+              <div class="accordion-item mb-3 border-0">
+                <h2 class="accordion-header">
+                  <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold"
+                          data-bs-toggle="collapse" data-bs-target="#ai{{ loop.index }}"
+                          style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    {{ k.replace('_',' ').title() }}
+                  </button>
+                </h2>
+                <div id="ai{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                  <div class="accordion-body p-4">
+                    {{ v|safe }}
+                  </div>
                 </div>
+              </div>
+              {% endfor %}
             </div>
-        </div>
-        {% endfor %}
-    </div>
-
-</div>
-{% endif %}
+          </section>
+          {% endif %}

@@ -1,0 +1,38 @@
+           <!-- ===== ✅ NEW: TRADE QUALITY DISTRIBUTION ===== -->
+          {% if report.trade_analytics and report.trade_analytics.score_distribution %}
+          <section id="trade-quality" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-star-fill text-warning"></i> Trade Quality Distribution</h4>
+            <div class="card p-4 mb-4">
+              <div class="row g-4">
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-success">
+                    <div class="metric-label">Excellent (80+)</div>
+                    <div class="metric-value text-success">{{ report.trade_analytics.score_distribution.excellent }}</div>
+                    <div class="metric-subtext">High quality trades</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Good (60-80)</div>
+                    <div class="metric-value">{{ report.trade_analytics.score_distribution.good }}</div>
+                    <div class="metric-subtext">Above average</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card">
+                    <div class="metric-label">Average (40-60)</div>
+                    <div class="metric-value text-warning">{{ report.trade_analytics.score_distribution.average }}</div>
+                    <div class="metric-subtext">Needs improvement</div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="metric-card gradient-bg-danger">
+                    <div class="metric-label">Poor (<40)</div>
+                    <div class="metric-value text-danger">{{ report.trade_analytics.score_distribution.poor }}</div>
+                    <div class="metric-subtext">High risk trades</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          {% endif %}

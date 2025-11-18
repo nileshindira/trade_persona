@@ -1,0 +1,86 @@
+          <!-- ===== GAINERS & LOSERS ===== -->
+          <section id="gainers" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-arrow-left-right"></i> Top Gainers & Losers</h4>
+            <div class="accordion" id="gainLossAcc">
+              {% for key,label,icon,clr in [('gainer','Top Gainers','bi-arrow-up-circle','success'),('loser','Top Losers','bi-arrow-down-circle','danger')] %}
+
+
+              {% set blk = report.detailed_metrics.get(key, {}) %}
+
+              <div class="accordion-item mb-3 border-0">
+                <h2 class="accordion-header">
+                  <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold"
+                          data-bs-toggle="collapse" data-bs-target="#{{key}}Collapse"
+                          style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
+                    <i class="bi {{icon}} me-2 text-{{clr}}"></i>
+                    {{ label }}
+                    <span class="badge bg-{{clr}} ms-2">{{ blk.count or 0 }}</span>
+                  </button>
+                </h2>
+
+                <div id="{{key}}Collapse" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+                  <div class="accordion-body">
+
+                    {% if blk %}
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                          <thead>
+                            <tr>
+                              <th>Symbol</th>
+                              <th class="text-end">Buy Rate</th>
+                              <th class="text-end">Sell/LTP</th>
+                              <th class="text-end">Qty</th>
+                              <th class="text-end">Value</th>
+                              <th class="text-end">P&L</th>
+                              <th class="text-end">Days</th>
+                              <th class="text-end">Return %</th>
+                              <th class="text-end">Buy T Score</th>
+                              <th class="text-end">Buy F Score</th>
+                              <th class="text-end">Sell T Score</th>
+                              <th class="text-end">Sell F Score</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+
+                        {% for s in blk.list %}
+                            {% set sym = s %}
+                            {% set det = report.detailed_metrics.symbol_details[sym] if report.detailed_metrics.symbol_details and (sym in report.detailed_metrics.symbol_details) else None %}
+
+                            <tr>
+                              <td><strong>{{ s }}</strong></td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.buy_rate if det else 0) }}</td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.sell_rate if det else (det.ltp if det else 0)) }}</td>
+                              <td class="text-end">{{ det.qty if det else '-' }}</td>
+                              <td class="text-end">₹{{ '%.2f'|format(det.value if det else 0) }}</td>
+
+                              {% set pnlv = det.pnl if det else 0 %}
+                              <td class="text-end fw-bold {{ 'text-success' if pnlv>=0 else 'text-danger' }}">
+                                ₹{{ '%.2f'|format(pnlv) }}
+                              </td>
+
+                              <td class="text-end">{{ det.holding_days if det else '-' }}</td>
+
+                              <td class="text-end fw-bold {{ 'text-success' if (det.return_pct if det else 0)>=0 else 'text-danger' }}">
+                                {{ '%.2f'|format(det.return_pct if det else 0) }}%
+                              </td>
+
+                              <td class="text-end">{{ det.buy_t_score if det else '-' }}</td>
+                              <td class="text-end">{{ det.buy_f_score if det else '-' }}</td>
+                              <td class="text-end">{{ det.sell_t_score if det else '-' }}</td>
+                              <td class="text-end">{{ det.sell_f_score if det else '-' }}</td>
+                            </tr>
+
+
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                      </div>
+                    {% else %}
+                      <div class="alert alert-secondary">No {{ label.lower() }} data available.</div>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </section>

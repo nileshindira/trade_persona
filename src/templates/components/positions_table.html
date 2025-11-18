@@ -1,80 +1,146 @@
-<div class="card p-4 mb-4">
-    <h3 class="mb-3"><i class="bi bi-box-seam"></i> Positions</h3>
+          <!-- ===== POSITIONS TABLES ===== -->
+          <section id="positions" class="mt-4">
+            <h4 class="section-title"><i class="bi bi-box-seam"></i> Positions</h4>
 
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item">
-            <a class="nav-link active" data-bs-toggle="tab" href="#open-pos">Open Positions</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#closed-pos">Closed Positions</a>
-        </li>
-    </ul>
+            <div class="card p-3 mb-3">
+              <div class="row g-3">
+                <div class="col-md-3">
+                  <div class="small-muted">Open Positions (symbols)</div>
+                  <div class="fw-bold">{{ report.detailed_metrics.open_positions_count or 0 }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Avg Realized / Stock</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.avg_realized_pl_per_stock or 0) }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Avg Unrealized / Open Stock</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.avg_unrealized_pl_per_open_stock or 0) }}</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="small-muted">Day MTM (Realized)</div>
+                  <div class="fw-bold">₹{{ '%.2f'|format(report.detailed_metrics.day_mtm or 0) }}</div>
+                </div>
+              </div>
+            </div>
 
-    <div class="tab-content">
+            <ul class="nav nav-tabs mb-3" id="posTabs" role="tablist">
+              <li class="nav-item">
+                <a class="nav-link active" id="open-tab" data-bs-toggle="tab" href="#openTab" role="tab">
+                  <i class="bi bi-unlock"></i> Open Positions
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="closed-tab" data-bs-toggle="tab" href="#closedTab" role="tab">
+                  <i class="bi bi-lock"></i> Closed Positions
+                </a>
+              </li>
+            </ul>
 
-        <!-- OPEN POSITIONS -->
-        <div class="tab-pane fade show active" id="open-pos">
-            {% if report.detailed_metrics.open_positions %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                    <thead>
-                        <tr>
+            <div class="tab-content">
+              <!-- OPEN -->
+              <div class="tab-pane fade show active" id="openTab" role="tabpanel">
+                {% if report.detailed_metrics.open_positions %}
+                  <div class="card p-3">
+                    <div class="table-responsive">
+                      <table class="table table-sm table-hover align-middle" id="openTable">
+                        <thead>
+                          <tr>
                             <th>Symbol</th>
-                            <th>Qty</th>
+                            <th class="text-end">Buy Rate</th>
+                            <th class="text-end">Last Price</th>
+                            <th class="text-end">Qty</th>
                             <th class="text-end">Value</th>
                             <th class="text-end">Unrealized</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for p in report.detailed_metrics.open_positions %}
-                        <tr>
-                            <td>{{ p.symbol }}</td>
-                            <td>{{ p.qty }}</td>
+                            <th class="text-end">MTM %</th>
+                            <th class="text-end">Holding Days</th>
+                            <th class="text-end">Buy T Score</th>
+                            <th class="text-end">Buy F Score</th>
+                            <th class="text-end">Sell T Score</th>
+                            <th class="text-end">Sell F Score</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for p in report.detailed_metrics.open_positions %}
+                          <tr>
+                            <td><a href="#buckets">{{ p.symbol }}</a></td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.avg_cost or 0) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.last_price or 0) }}</td>
+                            <td class="text-end">{{ p.qty or 0 }}</td>
                             <td class="text-end">₹{{ '%.2f'|format(p.value or 0) }}</td>
-                            <td class="text-end {{ 'text-success' if (p.unrealized or 0)>=0 else 'text-danger' }}">
-                                ₹{{ '%.2f'|format(p.unrealized or 0) }}
+                            <td class="text-end {{ 'text-success' if (p.unrealized or 0) >=0 else 'text-danger' }}">
+                              ₹{{ '%.2f'|format(p.unrealized or 0) }}
                             </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="alert alert-secondary">No open positions.</div>
-            {% endif %}
-        </div>
+                            <td class="text-end {{ 'text-success' if (p.pct_change or 0) >=0 else 'text-danger' }}">
+                              {{ '%.2f'|format(p.pct_change or 0) }}%
+                            </td>
+                            <td class="text-end">{{ p.holding_days or '-' }}</td>
+                            <td class="text-end">{{ p.t_score or '-' }}</td>
+                            <td class="text-end">{{ p.f_score or '-' }}</td>
+                            <td class="text-end">{{ p.t_score or '-' }}</td>
+                            <td class="text-end">{{ p.f_scores or '-' }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="alert alert-secondary">No open positions available.</div>
+                {% endif %}
+              </div>
 
-        <!-- CLOSED POSITIONS -->
-        <div class="tab-pane fade" id="closed-pos">
-            {% if report.detailed_metrics.closed_positions %}
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                    <thead>
-                        <tr>
+              <!-- CLOSED -->
+              <div class="tab-pane fade" id="closedTab" role="tabpanel">
+                {% if report.detailed_metrics.closed_positions %}
+                  <div class="card p-3">
+                    <div class="table-responsive">
+                      <table class="table table-sm table-hover align-middle" id="closedTable">
+                        <thead>
+                          <tr>
                             <th>Symbol</th>
+                            <th class="text-end">BUY Rate</th>
+                            <th class="text-end">SELL Rate</th>
+                            <th class="text-end">Buy Qty</th>
+                            <th class="text-end">Sell Qty</th>
+                            <th class="text-end">Value</th>
                             <th class="text-end">Realized P&L</th>
                             <th class="text-end">Return %</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for p in report.detailed_metrics.closed_positions %}
-                        <tr>
-                            <td>{{ p.symbol }}</td>
-                            <td class="text-end {{ 'text-success' if (p.unrealized or 0)>=0 else 'text-danger' }}">
-                                ₹{{ '%.2f'|format(p.unrealized or 0) }}
+                            <th class="text-end">Holding Days</th>
+                            <th class="text-end">Buy T Score</th>
+                            <th class="text-end">Buy F Score</th>
+                            <th class="text-end">Sell T Score</th>
+                            <th class="text-end">Sell F Score</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for p in report.detailed_metrics.closed_positions %}
+                          <tr>
+                            <td><a href="#buckets">{{ p.symbol }}</a></td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.buy_price or 0) }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.sell_price or 0) }}</td>
+                            <td class="text-end">{{ p.buy_qty or 0 }}</td>
+                            <td class="text-end">{{ p.sell_qty or 0 }}</td>
+                            <td class="text-end">₹{{ '%.2f'|format(p.invested_value or 0) }}</td>
+                            <td class="text-end {{ 'text-success' if (p.realized_pnl or 0) >=0 else 'text-danger' }}">
+                              ₹{{ '%.2f'|format(p.realized_pnl or 0) }}
                             </td>
-                            <td class="text-end {{ 'text-success' if (p.pct_change or 0)>=0 else 'text-danger' }}">
-                                {{ '%.2f'|format(p.pct_change or 0) }}%
+                            <td class="text-end {{ 'text-success' if (p.pct_change or 0) >=0 else 'text-danger' }}">
+                              {{ '%.2f'|format(p.pct_change or 0) }}%
                             </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
+                            <td class="text-end">{{ p.holding_days or '-' }}</td>
+                            <td class="text-end">{{ p.buy_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.buy_f_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_t_scores or '-' }}</td>
+                            <td class="text-end">{{ p.sell_f_scores or '-' }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="alert alert-secondary">Closed positions data not available.</div>
+                {% endif %}
+              </div>
             </div>
-            {% else %}
-            <div class="alert alert-secondary">No closed positions.</div>
-            {% endif %}
-        </div>
-
-    </div>
-</div>
+          </section>
