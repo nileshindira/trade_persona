@@ -75,7 +75,19 @@ class TradingDataProcessor:
                         break
 
                 if candidates:
-                    merged_data = pd.concat([row.to_frame().T.reset_index(drop=True), candidates[0].to_frame().T.reset_index(drop=True)], axis=1)
+                    # Convert row to DataFrame
+                    left_df = pd.DataFrame([row])
+
+                    # Convert candidate row(s) to DataFrame
+                    right = candidates[0]
+                    if isinstance(right, pd.Series):
+                        right_df = pd.DataFrame([right])
+                    else:
+                        right_df = right.reset_index(drop=True)  # already DataFrame
+
+                    merged_data = pd.concat([left_df.reset_index(drop=True), right_df], axis=1)
+
+
                 else:
                     merged_data = row.to_frame().T.reset_index(drop=True)
 
@@ -89,6 +101,49 @@ class TradingDataProcessor:
         except Exception as e:
             self.logger.error(f"❌ Error getting additional data: {str(e)}")
             raise
+
+    def get_nifty_data(self, df):
+        try:
+            db_conf = self.config["database"]
+            table_name = db_conf.get("table_name", "stock_data")
+
+            conn = psycopg2.connect(
+                dbname=db_conf["dbname"],
+                user=db_conf["user"],
+                password=db_conf["password"],
+                host=db_conf["host"],
+                port=db_conf.get("port", 5432)
+            )
+
+            # Extract unique dates AND convert to string
+            dates = df['trade_date'].dt.strftime("%Y-%m-%d").unique().tolist()
+
+            # SQL with placeholders
+            query = f"""
+                SELECT date, close
+                FROM {table_name}
+                WHERE symbol = 'NIFTY' AND date IN %s;
+            """
+
+            # Execute query
+            db_df = pd.read_sql(query, conn, params=(tuple(dates),))
+
+
+            conn.close()
+
+            # Convert DB dates to string as well
+            db_df['date'] = pd.to_datetime(db_df['date']).dt.strftime("%Y-%m-%d")
+
+            # Build dict: {"2024-01-01": close}
+            nifty_data = dict(zip(db_df['date'], db_df['close']))
+
+            return nifty_data
+
+        except Exception as e:
+            print("Error:", e)
+            return {}, {}
+
+
     # =========================================================
     # Data Loading
     # =========================================================

@@ -4,15 +4,15 @@
 
 {% include "components/header.html" %}
 {% include "components/executive_summary.html" %}
-{% include "components/metrics_cards.html" %}
+
+{% include "components/comprehensive_metrice_dhashboard.html" %}
 {% include "components/charts.html" %}
-{% include "components/detailed_pattern_analysis.html" %}
-{% include "components/summary_statistics.html" %}
+
+
 {% include "components/positions_table.html" %}
 {% include "components/gainers_n_losers.html" %}
 {% include "components/patterns.html" %}
-{% include "components/comprehensive_metrice_dhashboard.html" %}
-{% include "components/behavior_pattern.html" %}
+
 {% include "components/snapshots_summary.html" %}
 {% include "components/buckets.html" %}
 {% include "components/trade_quality_distribution.html" %}
@@ -31,6 +31,44 @@
           const ctx = document.getElementById('pnlTimelineChart');
           if(ctx) {
             const data = report.web_data.charts.pnl_timeline;
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.dates || [],
+                datasets: [{
+                  label: 'P&L',
+                  data: data.values || [],
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.1)',
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                  }
+                }
+              }
+            });
+          }
+        })();
+        {% endif %}
+
+
+        // NIFTY Timeline Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
+        (function(){
+          const ctx = document.getElementById('niftyTimelineChart');
+          if(ctx) {
+            const data = report.web_data.charts.nifty_pnl_timeline;
             new Chart(ctx, {
               type: 'line',
               data: {

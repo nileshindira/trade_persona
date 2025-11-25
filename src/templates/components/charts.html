@@ -14,8 +14,23 @@
                 </div>
               </div>
               {% endif %}
-
              </div>
+
+                          <div class="card p-4">
+
+
+              <!-- P&L Timeline -->
+              {% if report.web_data.charts.nifty_pnl_timeline %}
+              <div class="mb-4">
+                <h5>NIFTY Timeline</h5>
+                <div class="chart-container" style="height: 300px; position: relative;">
+
+                <canvas id="niftyTimelineChart" height="300"></canvas>
+                </div>
+              </div>
+              {% endif %}
+             </div>
+
             {% endif %}
           </section>
 

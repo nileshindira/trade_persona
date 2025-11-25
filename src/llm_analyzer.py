@@ -113,7 +113,7 @@ class OllamaAnalyzer:
         # Prepare context (NOW includes DataFrame)
         context = self._prepare_context(metrics, patterns, df)
 
-        # 1. Generate text analysis from LLM
+        self.logger.info("1. Generate text analysis from LLM")
         analysis_text = {
             'trader_profile': self._analyze_trader_profile(context),
             'risk_assessment': self._analyze_risk(context),
@@ -122,15 +122,15 @@ class OllamaAnalyzer:
             'performance_summary': self._summarize_performance(context),
         }
 
-        # 2. Extract structured LLM summary
+        self.logger.info("2. Extract structured LLM summary")
         structured_summary = self._extract_structured_summary(analysis_text, metrics, patterns)
 
-        # 3. NEW: Prepare dedicated data structures for the Web Page UI
+        self.logger.info("3. NEW: Prepare dedicated data structures for the Web Page UI")
         web_kpis = self._prepare_dashboard_kpis(metrics, patterns)
         web_charts = self._prepare_chart_data(metrics,patterns, df)
 
 
-        # ✅ Final Output for API/Web Service
+        self.logger.info("Final Output for API/Web Service")
         analysis = {
             "analysis_text": analysis_text,        # LLM generated text blocks (for display)
             "summary_data": structured_summary,   # Extracted LLM verdict/score (for dashboard)
