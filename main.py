@@ -16,7 +16,8 @@ from src.pattern_detector import TradingPatternDetector
 from src.llm_analyzer import OllamaAnalyzer
 from src.report_generator import ReportGenerator
 from src.ema_calculator import EMACalculator
-
+from datetime import datetime, date
+import numpy as np
 
 # Setup logging
 logging.basicConfig(
@@ -46,7 +47,9 @@ class TradingPersonaAnalyzer:
         # except Exception as e:
         #     logger.warning(f"EMA calculator initialization failed: {str(e)}. EMA scores will be skipped.")
         #     self.ema_enabled = False
-        #
+
+
+
     def analyze(self, data_filepath: str, trader_name: str = "Trader",
                 output_dir: str = "data/reports", include_ema: bool = True):
         """Run complete analysis pipeline"""
@@ -56,6 +59,7 @@ class TradingPersonaAnalyzer:
         # Step 1: Load and process data
         logger.info("Loading data...")
         df = self.data_processor.load_data(data_filepath)
+        nifty_chart_data = self.data_processor.get_nifty_data(df)
 
         # Validate data
         is_valid, missing_cols = self.data_processor.validate_data(df)
@@ -100,8 +104,19 @@ class TradingPersonaAnalyzer:
         logger.info("Generating AI analysis...")
         analysis = self.llm_analyzer.generate_analysis(metrics, patterns, df)
 
+        # add nifty data chart in analysis['web_data']['nifty_pnl_timeline']->[date]['values']
+
+        analysis_web_data_charts = {}
+        analysis_web_data_charts['dates'] = list(nifty_chart_data.keys())
+        analysis_web_data_charts['values'] = list(nifty_chart_data.values())
+        analysis['web_data']['charts']['nifty_pnl_timeline'] = analysis_web_data_charts
+
+
+
+
         # Step 5: Generate report
         logger.info("Generating report...")
+
         report = self.report_generator.generate_report(
             metrics, patterns, analysis, trader_name
         )
