@@ -63,16 +63,19 @@ class TradingDataProcessor:
 
             # --- Create index for fast lookup ---
             db_df.set_index(["symbol", "date"], inplace=True)
-
+            db_df.sort_index(level=["symbol", "date"], inplace=True)
             merged_rows = []
             for i, row in df.iterrows():
                 trade_date = row["trade_date"]
                 candidates = []
 
                 for t in [row.get("token_0"), row.get("token_1"), row.get("token_2"), row.get("token_3")]:
-                    if pd.notna(t) and (t, trade_date) in db_df.index:
-                        candidates.append(db_df.loc[(t, trade_date)])
-                        break
+                    if pd.notna(t):
+                        try:
+                            candidates.append(db_df.loc[(t, trade_date)])
+                            break
+                        except KeyError:
+                            pass
 
                 if candidates:
                     # Convert row to DataFrame

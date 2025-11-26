@@ -48,4 +48,20 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
     }
+
+    if (charts.segment_distribution) {
+        const ctx = document.getElementById("instrumentChart");
+        new Chart(ctx, {
+            type: "doughnut",
+            data: {
+                labels: charts.instrument_distribution.labels,
+                datasets: [{
+                    data: charts.instrument_distribution.values,
+                    backgroundColor: [
+                        "#0d6efd", "#198754", "#ffc107", "#dc3545", "#6f42c1"
+                    ]
+                }]
+            }
+        });
+    }
 });

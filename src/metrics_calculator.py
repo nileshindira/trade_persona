@@ -42,6 +42,32 @@ class TradingMetricsCalculator:
         self.trading_days = config['metrics']['trading_days_per_year']
         self.logger = logging.getLogger(__name__)
 
+    def classify_instrument(self,symbol: str):
+        s = str(symbol).upper().strip().replace(",", "")
+        parts = s.split()
+
+        INDEXES = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"}
+
+        # OPTION
+        if len(parts) >= 3 and parts[1] in ("CE", "PE"):
+
+            # INDEX OPTION
+            if parts[2] in INDEXES:
+                return parts[2], "OPTION-INDEX"
+
+            # EQUITY OPTION
+            return parts[2], "OPTION-EQUITY"
+
+        # EQUITY
+        if parts[0] == "EQ":
+            return parts[1], "EQUITY"
+
+        if len(parts) == 1 and parts[0].isalpha():
+            return parts[0], "EQUITY"
+
+        # fallback
+        return parts[0], "UNKNOWN"
+
     # =========================================================
     # Public Entry
     # =========================================================
@@ -64,6 +90,8 @@ class TradingMetricsCalculator:
                 'trait_summary': 'No data',
                 'persona_traits': {}
             }
+
+
 
         # -------- Core metrics (existing) --------
         metrics = {
@@ -165,7 +193,70 @@ class TradingMetricsCalculator:
             avg_win = df.loc[df["pnl"] > 0, "pnl"].mean()
             avg_loss = df.loc[df["pnl"] < 0, "pnl"].mean()
             metrics["reward_to_risk_balance"] = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
+            # ================================
+            # NEW – Instrument Cluster Metrics (symbol → category)
+            # ================================
+            if 'symbol' in df.columns and 'trade_value' in df.columns:
 
+                def _get_asset_cluster(s):
+                    asset, kind = self.classify_instrument(s)
+                    # kind can be:
+                    #   EQUITY
+                    #   OPTION-INDEX
+                    #   OPTION-EQUITY
+                    #   UNKNOWN
+                    return kind
+
+                df["_asset_kind"] = df["symbol"].apply(_get_asset_cluster)
+
+                cluster_value = df.groupby("_asset_kind")["trade_value"].sum().astype(float)
+                total_asset_val = float(cluster_value.sum())
+
+                if total_asset_val > 0:
+                    cluster_pct = (cluster_value / total_asset_val * 100).round(2)
+                else:
+                    cluster_pct = cluster_value * 0.0
+
+                asset_clusters = [
+                    {"asset_kind": cat, "value": float(pct)}
+                    for cat, pct in cluster_pct.items()
+                ]
+            else:
+                asset_clusters = []
+            metrics["chart_data"]={}
+            metrics["chart_data"]["asset_clusters"] = asset_clusters
+
+            # ================================
+            # NEW – asset_name cluster pie data (symbol -> asset_name)
+            # ================================
+            if 'symbol' in df.columns and 'trade_value' in df.columns:
+
+                def _get_asset_name(s):
+                    asset, kind = self.classify_instrument(s)
+                    return asset
+
+                df["_asset_name"] = df["symbol"].apply(_get_asset_name)
+
+                name_value = df.groupby("_asset_name")["trade_value"].sum().astype(float)
+                total_name_val = float(name_value.sum())
+
+                if total_name_val > 0:
+                    name_pct = (name_value / total_name_val * 100).round(2)
+                else:
+                    name_pct = name_value * 0.0
+
+                asset_name_clusters = [
+                    {"asset_name": name, "value": float(pct)}
+                    for name, pct in name_pct.items()
+                ]
+            else:
+                asset_name_clusters = []
+
+
+            metrics["symbol_cluster"] = asset_name_clusters
+            metrics["equity_trade_pct"] = float(cluster_pct.get("EQUITY", 0))
+            metrics["option_equity_trade_pct"] = float(cluster_pct.get("OPTION-EQUITY", 0))
+            metrics["option_index_trade_pct"] = float(cluster_pct.get("OPTION-INDEX", 0))
 
         return metrics
 

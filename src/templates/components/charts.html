@@ -38,20 +38,46 @@
 
               <!-- Instrument Distribution -->
           <section id="instrument_distribution" class="mt-4">
-            <div class="card p-4">
-              <div class="mb-4">
-                  {% if report.web_data.charts.instrument_distribution %}
-                  {% endif %}
-                <h5>Instrument Distribution</h5>
-                  <div class="pie-chart-container" style="height: 250px; position: relative;">
 
-                <canvas id="instrumentChart" height="200"></canvas>
-                </div>
+  <div class="d-flex gap-3">   <!-- NEW flex wrapper -->
 
-              </div>
-            </div>
+    <!-- Card 1 -->
+    <div class="card p-4 flex-fill" style="width:50%;">
+      <div class="mb-4">
+        {% if report.web_data.charts.instrument_distribution %}
+        {% endif %}
+        <h5>Segment Distribution</h5>
+        <div class="pie-chart-container" style="height: 250px; position: relative;">
+          <canvas id="instrumentChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
 
-          </section>
+    <!-- Card 2 -->
+    <div class="card p-4 flex-fill" style="width:50%;">
+      <div class="mb-4">
+        {% if report.web_data.charts.segment_distribution %}
+        {% endif %}
+        <h5>Instrument Distribution</h5>
+        <div class="d-flex justify-content-between">
+          <select id="segmentFilter" class="form-select" style="width:160px;">
+            <option value="10">Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+            <option value="all">Show All</option>
+          </select>
+        </div>
+
+        <div class="pie-chart-container" style="height: 250px; position: relative;">
+          <canvas id="segmentChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</section>
+
               <!-- Persona Scores -->
           <section id="persona_scores" class="mt-4">
               {% if report.web_data.persona_scores %}

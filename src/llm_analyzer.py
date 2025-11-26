@@ -80,18 +80,10 @@ class OllamaAnalyzer:
         # Instrument Clustering (For pie chart)
         # Format as list of {'name': 'Instrument', 'value': 12.3}
         inst_cluster = patterns.get('instrument_clustering', {})
-        chart_data['instrument_distribution'] = [
-            {'name': 'BankNifty', 'value': inst_cluster.get('banknifty_percentage', 0)},
-            {'name': 'Nifty', 'value': inst_cluster.get('nifty_percentage', 0)},
-            {'name': 'Nifty Bank', 'value': inst_cluster.get('nifty_bank_percentage', 0)},
-            {'name': 'Nifty IT', 'value': inst_cluster.get('nifty_it_percentage', 0)},
-            {'name': 'Nifty FMCG', 'value': inst_cluster.get('nifty_fmcg_percentage', 0)},
-            {'name': 'Nifty Metal', 'value': inst_cluster.get('nifty_metal_percentage', 0)},
-            {'name': 'Nifty Pharma', 'value': inst_cluster.get('nifty_pharma_percentage', 0)},
-            {'name': 'Nifty PSU', 'value': inst_cluster.get('nifty_psu_percentage', 0)},
-            {'name': 'Nifty PSU', 'value': inst_cluster.get('nifty_psu_percentage', 0)},
+        chart_data['instrument_distribution'] = metrics.get("chart_data")["asset_clusters"]
+        chart_data['segment_distribution']=metrics.get("symbol_cluster")
+        chart_data['symbol_distribution_raw'] = metrics["symbol_cluster"]
             # Add other instruments as needed
-        ]
 
         # Win/Loss Distribution (For simple bar chart)
         chart_data['win_loss_amounts'] = {
@@ -310,12 +302,14 @@ Include:
 2. Risk appetite (conservative, moderate, aggressive)
 3. Trading style characteristics
 4. How the persona traits reflect in actual trade behavior
+Ensure to keep response in simple interactive english for layman trader in india. 
 
 {context}
 
 Provide a concise but comprehensive trader profile (200-300 words):
 """
         system_prompt = "You are an expert financial analyst specializing in trading behavior analysis."
+        self.logger.info("1.1 Generate _analyze_trader_profile from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _analyze_risk(self, context: str) -> str:
@@ -330,10 +324,11 @@ Analyze:
 2. Key risk factors
 3. Risk-adjusted performance
 4. Potential vulnerabilities based on persona behavior
-
+Ensure to keep response in simple interactive english for layman trader in india
 Provide detailed risk analysis (200-300 words):
 """
         system_prompt = "You are a risk management expert analyzing trading portfolios."
+        self.logger.info("1.2 Generate _analyze_risk from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _analyze_behavior(self, context: str) -> str:
@@ -348,10 +343,11 @@ Focus on:
 2. Emotional trading signs
 3. Discipline issues
 4. Positive behaviors and consistency traits
-
+Ensure to keep response in simple interactive english for layman trader in india
 Provide behavioral analysis (200-300 words):
 """
         system_prompt = "You are a trading psychology expert analyzing trader behavior."
+        self.logger.info("1.3 Generate _analyze_behavior from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _generate_recommendations(self, context: str) -> str:
@@ -366,10 +362,11 @@ Provide:
 2. Short-term improvements (1-3 months)
 3. Long-term strategy changes
 4. Specific metrics or traits to improve
-
+Ensure to keep response in simple interactive english for layman trader in india
 Format as bullet points with clear action items:
 """
         system_prompt = "You are a professional trading coach providing improvement strategies."
+        self.logger.info("1.4 Generate _generate_recommendations from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _summarize_performance(self, context: str) -> str:
@@ -384,10 +381,12 @@ Include:
 2. Key strengths
 3. Major weaknesses
 4. Bottom-line assessment integrating persona analysis
-
+Ensure to keep response in simple interactive english for layman trader in india
 Be direct and honest in assessment (150-200 words):
 """
         system_prompt = "You are a senior financial advisor providing performance reviews."
+        self.logger.info("1.5 Generate _summarize_performance from LLM")
+
         return self._call_ollama(prompt, system_prompt)
 
     # =========================================================

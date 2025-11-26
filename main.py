@@ -105,11 +105,34 @@ class TradingPersonaAnalyzer:
         analysis = self.llm_analyzer.generate_analysis(metrics, patterns, df)
 
         # add nifty data chart in analysis['web_data']['nifty_pnl_timeline']->[date]['values']
+        # --- Normalize PNL & NIFTY values to 100 scale
+
+        # PNL cumulative
+        pnl_vals = analysis['web_data']['charts']['pnl_timeline']['values']
+        if pnl_vals:
+            start = pnl_vals[0]
+            norm_pnl_vals = [(v - start) + 100 for v in pnl_vals]
+        else:
+            norm_pnl_vals = []
+
+        # Normalize NIFTY
+        nifty_vals = list(nifty_chart_data.values())
+        if nifty_vals:
+            start_idx = nifty_vals[0]
+            norm_nifty_vals = [(v / start_idx) * 100 for v in nifty_vals]
+        else:
+            norm_nifty_vals = []
+
 
         analysis_web_data_charts = {}
         analysis_web_data_charts['dates'] = list(nifty_chart_data.keys())
         analysis_web_data_charts['values'] = list(nifty_chart_data.values())
         analysis['web_data']['charts']['nifty_pnl_timeline'] = analysis_web_data_charts
+        analysis['web_data']['charts']['relative_chart'] = {
+            "dates": list(nifty_chart_data.keys()),
+            "pnl_normalized": norm_pnl_vals,
+            "nifty_normalized": norm_nifty_vals,
+        }
 
 
 
