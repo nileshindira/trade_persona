@@ -230,9 +230,9 @@ def export_html_from_json(json_path, html_path, base_dir=None):
     gen.export_html(report, html_path)
 
 
-#
-# if __name__ == "__main__":
-#     with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
-#         data = json.load(f)
-#     gen = ReportGenerator()
-#     gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")
+
+if __name__ == "__main__":
+    with open("D:\\PycharmProjects\\trade_persona\data\\reports\\Trader_report.json", "r", encoding="utf-8") as f:
+        data = json.load(f)
+    gen = ReportGenerator()
+    gen.export_html(data, "D:\\PycharmProjects\\trade_persona\data\\reports\\Trader_report.html", theme="light")

@@ -1,64 +1,116 @@
-/* ==========================================================
-   THEME BASE STYLES (applies to all themes)
-   ========================================================== */
+        :root{
+          --primary:#0d6efd; --primary-weak:#93c5fd;
+          --accent:#10b981; --danger:#ef4444; --warn:#f59e0b; --ok:#22c55e;
+          --bg-light:#f8fafc; --card-light:#ffffff; --text-light:#0f172a; --muted-light:#64748b;
+          --bg-dark:#0b1120; --card-dark:#111827; --text-dark:#e5e7eb; --muted-dark:#94a3b8;
+          --shadow:0 6px 24px rgba(0,0,0,.08);
+        }
+        [data-theme="light"]{--bg:var(--bg-light);--card:var(--card-light);--text:var(--text-light);--muted:var(--muted-light);}
+        [data-theme="dark"]{--bg:var(--bg-dark);--card:var(--card-dark);--text:var(--text-dark);--muted:var(--muted-dark);}
 
-body {
-    font-family: "Inter", "Segoe UI", Roboto, sans-serif;
-}
+        body{
+          background:var(--bg);
+          color:var(--text);
+          font-family:'Inter',-apple-system,sans-serif;
+          line-height:1.6;
+        }
 
-.metric-value {
-    font-size: 1.7rem;
-    font-weight: 700;
-}
+        .card{
+          border:0;
+          border-radius:1.25rem;
+          background:var(--card);
+          box-shadow:var(--shadow);
+          margin-bottom:1.5rem;
+        }
 
-.metric-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    color: #6c757d;
-    letter-spacing: 0.5px;
-}
+        .section-title{
+          font-weight:800;
+          color:var(--primary);
+          margin:2.5rem 0 1.5rem;
+          font-size:1.75rem;
+        }
 
-.metric-card {
-    padding: 1rem;
-    border-radius: 12px;
-    background: #f8f9fa;
-    border: 1px solid #e5e7eb;
-}
+        .metric-card{
+          background:linear-gradient(135deg,rgba(13,110,253,.05),rgba(16,185,129,.05));
+          border-left:4px solid var(--primary);
+          padding:1.5rem;
+          border-radius:1rem;
+          height:100%;
+        }
 
-.stat-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 1rem;
-}
+        .metric-label{
+          font-size:.875rem;
+          color:var(--muted);
+          font-weight:600;
+          text-transform:uppercase;
+          margin-bottom:.5rem;
+        }
 
-.table-sm td, .table-sm th {
-    padding: 0.35rem !important;
-}
+        .metric-value{
+          font-size:2rem;
+          font-weight:800;
+          color:var(--text);
+        }
 
-.bg-danger-subtle {
-    background: rgba(255, 0, 0, 0.10) !important;
-}
+        .stat-grid{
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+          gap:1.5rem;
+          margin-bottom:2rem;
+        }
 
-.bg-success-subtle {
-    background: rgba(0, 255, 0, 0.10) !important;
-}
+        .data-table{
+          width:100%;
+          border-collapse:collapse;
+        }
 
-.card {
-    border-radius: 1rem;
-}
+        .data-table th{
+          background:rgba(13,110,253,.08);
+          padding:12px;
+          text-align:left;
+          font-weight:600;
+        }
 
-/* Accordion styling */
-.accordion-button {
-    font-weight: 600;
-}
+        .data-table td{
+          padding:10px;
+          border-bottom:1px solid rgba(0,0,0,.05);
+        }
 
-.accordion-button:not(.collapsed) {
-    background-color: #e8f0fe;
-}
+        .json-view{
+          background:#f4f4f4;
+          padding:1rem;
+          border-radius:8px;
+          font-family:monospace;
+          font-size:0.9rem;
+          max-height:400px;
+          overflow:auto;
+        }
 
-/* Badge improvements */
-.badge {
-    padding: 0.5em 0.8em;
-    font-size: 0.85em;
-    border-radius: 0.5rem;
-}
+        .pattern-badge{
+          display:inline-flex;
+          padding:.5rem 1rem;
+          border-radius:999px;
+          font-weight:600;
+          margin:.25rem;
+        }
+
+        .pattern-detected{
+          background:linear-gradient(135deg,#ef4444,#dc2626);
+          color:white;
+        }
+
+        .tab-content{
+          padding:1.5rem 0;
+        }
+
+        pre{
+          background:#f8f8f8;
+          padding:1rem;
+          border-radius:8px;
+          overflow-x:auto;
+        }
+
+        .text-success{color:#22c55e!important}
+        .text-danger{color:#ef4444!important}
+        .text-warning{color:#f59e0b!important}
+        .text-info{color:#0d6efd!important}

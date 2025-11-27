@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import logging
-from scipy.stats import skew, kurtosis
-
+# from scipy.stats import skew, kurtosis
+from datetime import date, datetime
 
 class TradingMetricsCalculator:
     """Calculate comprehensive trading metrics and trading persona traits + extended MTM/open-position analytics"""
@@ -67,6 +67,40 @@ class TradingMetricsCalculator:
 
         # fallback
         return parts[0], "UNKNOWN"
+
+    def compute_symbol_holding_days(self, df_sym):
+        """
+        Accepts df filtered for a single symbol.
+        Returns list of holding durations (days) for each opened->closed cycle.
+        """
+        df_sym = df_sym.sort_values("trade_date")
+
+        qty_stack = []  # (qty, date)
+        hold_days = []
+
+        for _, row in df_sym.iterrows():
+            if row["transaction_type"] == "BUY":
+                qty_stack.append([row["quantity"], row["trade_date"].date()])
+
+            elif row["transaction_type"] in ("SALE", "SELL"):
+                sell_qty = row["quantity"]
+                sell_date = row["trade_date"].date()
+
+                # FIFO matching
+                while sell_qty > 0 and qty_stack:
+                    buy_qty, buy_date = qty_stack[0]
+
+                    matched = min(buy_qty, sell_qty)
+                    sell_qty -= matched
+                    qty_stack[0][0] -= matched
+
+                    # holding days
+                    hold_days.append((sell_date - buy_date).days)
+
+                    if qty_stack[0][0] == 0:
+                        qty_stack.pop(0)
+
+        return hold_days
 
     # =========================================================
     # Public Entry
@@ -126,6 +160,7 @@ class TradingMetricsCalculator:
         metrics['gainer'] = pos['gainer']       # counts + list of gainer symbols
         metrics['loser'] = pos['loser']         # counts + list of loser symbols
         metrics['symbol_details'] = pos['symbol_details']
+        metrics['trader_type'] = pos['trader_type']
 
 
         # -------- Persona traits (existing) --------
@@ -496,24 +531,58 @@ class TradingMetricsCalculator:
             net_qty = row["net_qty"]
             pos_type = row["position_type"]
             ltp = row["ltp"]
+            # if len(symbol.split(' ') >2)
+            expiry_str = symbol.split(' ')[3]
+            strike = symbol.split(' ')[-1]
+            option_type = symbol.split(' ')[1]
 
+            # Convert string → date object
+            expiry_date = datetime.strptime(expiry_str, "%d%b%Y").date()
+
+            today_date = date.today()
             if pos_type == "LONG-OPEN":
                 # Long open qty is net_qty > 0
                 open_qty = abs(net_qty)
                 entry_price = row["buy_price"]
                 invested = open_qty * entry_price
-
-                # 👉 MTM from LTP (hook for intrinsic if post-expiry)
-                unreal = (ltp - entry_price) * open_qty
+                if today_date > expiry_date:
+                    if option_type == 'CE':
+                        if float(strike) > ltp:
+                            unreal = -1 * invested
+                        else:
+                            unreal = ((strike-ltp) * open_qty) - invested
+                    elif option_type == 'PE':
+                        if float(strike) < ltp:
+                            unreal = -1 * open_qty
+                        else:
+                            unreal = ((ltp-strike) * open_qty) - invested
+                    else:
+                        unreal = ((entry_price - ltp) * open_qty) - invested
+                else:
+                    # MTM pre-expiry
+                    unreal = (ltp - entry_price) * open_qty
 
             elif pos_type == "SHORT-OPEN":
                 # Short open qty is |net_qty| (more SELL than BUY)
                 open_qty = abs(net_qty)
                 entry_price = row["sell_price"]
                 invested = open_qty * entry_price
-
-                # 👉 MTM from LTP (short premium trade)
-                unreal = (entry_price - ltp) * open_qty
+                if today_date > expiry_date:
+                    if option_type == 'CE':
+                        if int(strike) > ltp:
+                            unreal = invested
+                        else:
+                            unreal = invested - ((strike-ltp) * open_qty)
+                    elif option_type == 'PE':
+                        if int(strike) < ltp:
+                            unreal = invested
+                        else:
+                            unreal = invested - ((ltp-strike) * open_qty)
+                    else:
+                        unreal = (entry_price - ltp) * open_qty
+                else:
+                    # 👉 MTM from LTP (short premium trade)
+                    unreal = (entry_price - ltp) * open_qty
 
             else:
                 open_qty = 0
@@ -559,7 +628,41 @@ class TradingMetricsCalculator:
         # =========================
         sym_closed = sym_df[sym_df["position_status"] == "CLOSED"].copy()
         realized_by_symbol = df.groupby("symbol")["pnl"].sum()
+######################################################################
+        all_days = []
 
+        for symbol, g in df.groupby("symbol"):
+            all_days.extend(self.compute_symbol_holding_days(g))
+
+        if not all_days:
+            trader_type = "NO CLOSED TRADES"
+        else:
+            import numpy as np
+
+            all_days = np.array(all_days)
+
+            pct_intraday = np.mean(all_days == 0) * 100
+            pct_positional = np.mean((all_days > 0) & (all_days <= 10)) * 100
+            pct_longterm = np.mean(all_days > 30) * 100
+
+            # Priority based on user's rule
+            if pct_intraday >= 70:
+                trader_type = "INTRADAY TRADER"
+            elif pct_positional >= 70:
+                trader_type = "POSITIONAL TRADER"
+            elif pct_longterm >= 70:
+                trader_type = "LONG TERM TRADER"
+            else:
+                # Mixed → choose max % bucket
+                max_bucket = max(
+                    [("INTRADAY", pct_intraday),
+                     ("POSITIONAL", pct_positional),
+                     ("LONGTERM", pct_longterm)],
+                    key=lambda x: x[1]
+                )[0]
+
+                trader_type = f"MIXED ({max_bucket})"
+######################################################################
         closed_positions = []
         for symbol, r in sym_closed.iterrows():
             closed_positions.append({
@@ -688,6 +791,7 @@ class TradingMetricsCalculator:
             "gainer": gainer,
             "loser": loser,
             "symbol_details": symbol_details,
+            "trader_type": trader_type,
         }
 
     def _build_open_buckets(self, sym_open: pd.DataFrame) -> Dict[str, Dict]:
