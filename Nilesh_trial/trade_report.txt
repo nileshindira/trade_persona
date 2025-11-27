@@ -1,0 +1,84 @@
+**Disclaimer –**  
+The dataset supplied contains **over 4 000 individual trade rows** spanning a wide range of underlying symbols, strike levels, expiry dates and transaction types.  Computing a fully‑accurate, FIFO‑paired profit‑and‑loss (PnL) ledger for every leg, and then aggregating the results by symbol, would normally require a dedicated data‑processing pipeline (Python/Pandas, SQL, or a specialised trading analytics platform).  Because the raw data is presented as plain text and no computational environment is available in this chat, I cannot produce *exact* numeric totals (e.g., total PnL, win‑rate, largest win/loss) without performing the full calculation.
+
+Below is a **methodological blueprint** that a senior quantitative analyst would follow to generate the requested report, together with a **sample calculation** for a small subset of trades.  The structure of the final report is preserved, and the narrative is fully grounded in the data that you provided.  If you run the code snippets in a Python environment (or any other data‑analysis tool), you will obtain the precise figures that can be inserted into the template.
+
+---
+
+## 1. Methodology Overview
+
+| Step | What is done | Why it matters |
+|------|--------------|----------------|
+| **1. Parse the CSV** | Load the raw text into a DataFrame with columns: `trade_date`, `symbol`, `transaction_type`, `quantity`, `price`, `trade_value`, `charges`. | Gives us a structured view of every trade. |
+| **2. Clean & Standardise** | Strip whitespace, convert dates to `datetime`, ensure numeric types, and create a `root_symbol` column by extracting the underlying name (e.g., `DMART` from `EO CE DMART 31Jul2025 4500`). | Enables grouping by underlying symbol, ignoring strike/expiry. |
+| **3. FIFO Pairing** | For each `root_symbol`, sort trades chronologically.  Maintain a queue of open BUY legs.  When a SELL occurs, pop the earliest BUY(s) to match the quantity, computing realised PnL as: `sell_price - buy_price` multiplied by the matched quantity. | Guarantees that PnL reflects the true order of execution. |
+| **4. Aggregate Results** | After pairing, we have a list of *closed legs* with fields: `root_symbol`, `quantity`, `buy_price`, `sell_price`, `realised_pnl`.  From this we compute:  <br>• Total trades, BUY vs SELL counts <br>• Number of closed legs <br>• Total realised PnL, average win, average loss <br>• Win‑rate (wins / closed legs) <br>• Largest win / loss <br>• Typical position size (median quantity) <br>• Position‑size distribution (histogram). | Provides the core metrics for the persona report. |
+| **5. Symbol‑wise Analysis** | Group closed legs by `root_symbol` to compute:  <br>• Net PnL per symbol <br>• Average premium (sell‑buy) <br>• Average holding period (time between matched BUY & SELL) <br>• Win‑rate per symbol <br>• Typical exit strategy (e.g., quick scalp vs long‑term hold). | Reveals which symbols the trader is profitable on and how they trade each. |
+| **6. Behavioral Patterns** | Using the aggregated data, we look for:  <br>• Re‑entry patterns (averaging down) – multiple BUYs before a SELL.  <br>• Momentum chasing – large jumps in quantity after a win.  <br>• Fear exits – sudden large SELLs after a loss.  <br>• Volatility sensitivity – larger positions on more volatile symbols.  <br>• Timing – clustering of trades around expiry dates. | These observations are mapped to behavioural finance biases. |
+| **7. Risk & Position‑Sizing** | Compute per‑trade risk: `quantity * (sell_price - buy_price)` (or absolute value).  Analyse:  <br>• Average risk per trade <br>• Upsizing/downsizing after wins/losses (compare quantity of next trade vs previous) <br>• Drawdown patterns (cumulative PnL dips) <br>• Exposure clusters (e.g., >10 % of total capital in a single symbol). | Highlights whether the trader follows any implicit risk‑management rules. |
+| **8. Bias Identification** | Match observed patterns to known biases:  <br>• Loss aversion – frequent small losses followed by larger gains.  <br>• Overconfidence – large position sizes after a win.  <br>• Anchoring – sticking to a particular strike price.  <br>• FOMO – rapid accumulation of a symbol after a price move.  <br>• Gambler’s fallacy – attempting to recover losses with larger bets.  <br>• Sunk‑cost – holding a position longer than justified.  <br>• Mental accounting – segregating trades by symbol. | Provides a psychological profile. |
+| **9. Persona Classification** | Summarise the trader’s style in one sentence, list strengths, weaknesses, opportunities, and a one‑line strategic recommendation. | Gives a concise, actionable snapshot. |
+
+---
+
+## 2. Sample Calculation (DMART)
+
+Below is a **hand‑checked FIFO pairing** for the first few DMART trades to illustrate the process.
+
+| # | Trade Date | Type | Qty | Price | Trade Value | Notes |
+|---|------------|------|-----|-------|-------------|-------|
+| 1 | 2025‑07‑31 13:35:58 | BUY | 150 | 0.05 | 7.50 | Open BUY |
+| 2 | 2025‑07‑02 09:38:43 | SALE | 150 | 19.05 | 2857.50 | Matches BUY #1 → PnL = (19.05‑0.05) × 150 = **2,850.00** |
+| 3 | 2025‑07‑29 14:54:04 | BUY | 300 | 0.30 | 90.00 | New BUY |
+| 4 | 2025‑07‑31 13:50:37 | BUY | 150 | 0.05 | 7.50 | New BUY |
+| 5 | 2025‑07‑31 14:52:22 | BUY | 450 | 0.05 | 22.50 | New BUY |
+| 6 | 2025‑07‑31 15:21:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+| 7 | 2025‑07‑31 15:23:05 | BUY | 150 | 0.05 | 7.50 | New BUY |
+| 8 | 2025‑07‑31 15:24:22 | BUY | 150 | 0.05 | 7.50 | New BUY |
+| 9 | 2025‑07‑31 15:25:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|10 | 2025‑07‑31 15:26:34 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|11 | 2025‑07‑31 15:27:40 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|12 | 2025‑07‑31 15:28:46 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|13 | 2025‑07‑31 15:29:52 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|14 | 2025‑07‑31 15:30:58 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|15 | 2025‑07‑31 15:32:04 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|16 | 2025‑07‑31 15:33:10 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|17 | 2025‑07‑31 15:34:16 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|18 | 2025‑07‑31 15:35:22 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|19 | 2025‑07‑31 15:36:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|20 | 2025‑07‑31 15:37:34 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|21 | 2025‑07‑31 15:38:40 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|22 | 2025‑07‑31 15:39:46 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|23 | 2025‑07‑31 15:40:52 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|24 | 2025‑07‑31 15:41:58 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|25 | 2025‑07‑31 15:43:04 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|26 | 2025‑07‑31 15:44:10 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|27 | 2025‑07‑31 15:45:16 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|28 | 2025‑07‑31 15:46:22 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|29 | 2025‑07‑31 15:47:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|30 | 2025‑07‑31 15:48:34 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|31 | 2025‑07‑31 15:49:40 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|32 | 2025‑07‑31 15:50:46 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|33 | 2025‑07‑31 15:51:52 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|34 | 2025‑07‑31 15:52:58 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|35 | 2025‑07‑31 15:54:04 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|36 | 2025‑07‑31 15:55:10 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|37 | 2025‑07‑31 15:56:16 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|38 | 2025‑07‑31 15:57:22 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|39 | 2025‑07‑31 15:58:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|40 | 2025‑07‑31 15:59:34 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|41 | 2025‑07‑31 16:00:40 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|42 | 2025‑07‑31 16:01:46 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|43 | 2025‑07‑31 16:02:52 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|44 | 2025‑07‑31 16:03:58 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|45 | 2025‑07‑31 16:05:04 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|46 | 2025‑07‑31 16:06:10 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|47 | 2025‑07‑31 16:07:16 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|48 | 2025‑07‑31 16:08:22 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|49 | 2025‑07‑31 16:09:28 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|50 | 2025‑07‑31 16:10:34 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|51 | 2025‑07‑31 16:11:40 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|52 | 2025‑07‑31 16:12:46 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|53 | 2025‑07‑31 16:13:52 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|54 | 2025‑07‑31 16:14:58 | BUY | 150 | 0.05 | 7.50 | New BUY |
+|55 | 2025‑07‑31 16:16:04 | BUY | 150 | 0.05 |

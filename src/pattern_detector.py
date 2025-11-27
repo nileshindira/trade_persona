@@ -25,12 +25,12 @@ class TradingPatternDetector:
         patterns['scalping'] = self.detect_scalping(df)
         patterns['hedging'] = self.detect_hedging(df)
         patterns['time_patterns'] = self.detect_time_patterns(df)
-        patterns['instrument_clustering'] = self.detect_instrument_clustering(df)
+        # patterns['instrument_clustering'] = self.detect_instrument_clustering(df)
 
         # 🧠 NEW advanced detections
         patterns['fomo_trading'] = self.detect_fomo_trading(df)
         patterns['chasing_losses'] = self.detect_chasing_losses(df)
-        patterns['overconfidence'] = self.detect_overconfidence(df)
+        # patterns['overconfidence'] = self.detect_overconfidence(df)
         patterns['weekend_exposure'] = self.detect_weekend_exposure(df)
 
         return patterns
