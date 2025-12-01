@@ -2,219 +2,307 @@
 
 {% block content %}
 
-{% include "components/header.html" %}
-{% include "components/executive_summary.html" %}
+  {# ===== HERO HEADER ===== #}
+  {% include "components/header.html" %}
 
-{% include "components/comprehensive_metrice_dhashboard.html" %}
-{% include "components/charts.html" %}
+  {# ===== STICKY SECTION NAV ===== #}
+  <nav class="section-nav mt-3 mb-3">
+  <ul class="nav nav-pills flex-wrap gap-2">
 
+    <li class="nav-item"><a class="nav-link" data-target="overview" href="#overview"><i class="bi bi-speedometer2 me-1"></i> Overview</a></li>
 
+    <li class="nav-item"><a class="nav-link" data-target="metrics" href="#metrics"><i class="bi bi-clipboard-data me-1"></i> Metrics</a></li>
 
-{% include "components/positions_table.html" %}
-{% include "components/gainers_n_losers.html" %}
-{% include "components/patterns.html" %}
+    <li class="nav-item"><a class="nav-link" data-target="charts" href="#charts"><i class="bi bi-graph-up-arrow me-1"></i> Charts</a></li>
 
-{% include "components/snapshots_summary.html" %}
-{% include "components/buckets.html" %}
-{% include "components/trade_quality_distribution.html" %}
-{% include "components/holdingh_period_analysis.html" %}
-{% include "components/ai_insights.html" %}
+    <li class="nav-item"><a class="nav-link" data-target="positions" href="#positions"><i class="bi bi-box-seam me-1"></i> Positions</a></li>
 
-{% include "components/footer.html" %}
-        <!-- Scripts -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-        <script>
-        const report = {{ report|tojson }};
+    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i class="bi bi-grid-3x3-gap me-1"></i> Buckets</a></li>
 
-        // P&L Timeline Chart
-        {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
-        (function(){
-          const ctx = document.getElementById('pnlTimelineChart');
-          if(ctx) {
-            const data = report.web_data.charts.pnl_timeline;
-            new Chart(ctx, {
-              type: 'line',
-              data: {
-                labels: data.dates || [],
-                datasets: [{
-                  label: 'P&L',
-                  data: data.values || [],
-                  borderColor: '#0d6efd',
-                  backgroundColor: 'rgba(13,110,253,0.1)',
-                  fill: true,
-                  tension: 0.4
-                }]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { display: false }
-                },
-                scales: {
-                  y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(0,0,0,0.05)' }
-                  }
-                }
+    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i class="bi bi-person-badge me-1"></i> Persona</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="ai_insights" href="#ai_insights"><i class="bi bi-stars me-1"></i> AI Insights</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="snapshots" href="#snapshots"><i class="bi bi-camera-reels me-1"></i> Snapshots</a></li>
+
+  </ul>
+</nav>
+
+  <main class="mt-2">
+
+    {# ===== OVERVIEW / EXEC SUMMARY ===== #}
+    <section id="overview" class="page-section">
+      {% include "components/executive_summary.html" %}
+    </section>
+
+    {# ===== METRICS DASHBOARD ===== #}
+    <section id="metrics" class="page-section">
+      {% include "components/comprehensive_metrice_dhashboard.html" %}
+    </section>
+
+    {# ===== CHARTS: P&L, NIFTY, SEGMENT, INSTRUMENT, PERSONA ===== #}
+    <section id="charts" class="page-section">
+      {% include "components/charts.html" %}
+      {% include "components/time_based_performance_chart.html" %}
+    </section>
+
+    {# ===== POSITIONS, GAINERS & LOSERS ===== #}
+    <section id="positions" class="page-section">
+      {% include "components/positions_table.html" %}
+      {% include "components/gainers_n_losers.html" %}
+    </section>
+
+    {# ===== PATTERNS & BUCKETS ===== #}
+    <section id="buckets" class="page-section">
+      {% include "components/patterns.html" %}
+      {% include "components/buckets.html" %}
+      {% include "components/trade_quality_distribution.html" %}
+      {% include "components/holdingh_period_analysis.html" %}
+    </section>
+
+    {# ===== SNAPSHOTS / SUMMARY CARDS ===== #}
+    <section id="snapshots" class="page-section">
+      {% include "components/snapshots_summary.html" %}
+    </section>
+
+    {# ===== AI INSIGHTS & RECOMMENDATIONS ===== #}
+    <section id="ai_insights" class="page-section">
+      {% include "components/ai_insights.html" %}
+
+    </section>
+
+    {% include "components/footer.html" %}
+
+  </main>
+
+  {# =========================
+     SCRIPTS (same as before)
+     ========================= #}
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const report = {{ report|tojson }};
+
+    // P&L Timeline Chart
+    {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
+    (function(){
+      const ctx = document.getElementById('pnlTimelineChart');
+      if(ctx) {
+        const data = report.web_data.charts.pnl_timeline;
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.dates || [],
+            datasets: [{
+              label: 'P&L',
+              data: data.values || [],
+              borderColor: '#0d6efd',
+              backgroundColor: 'rgba(13,110,253,0.1)',
+              fill: true,
+              tension: 0.4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(0,0,0,0.05)' }
               }
-            });
+            }
           }
-        })();
-        {% endif %}
+        });
+      }
+    })();
+    {% endif %}
 
-
-        // NIFTY Timeline Chart
-        {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
-        (function(){
-          const ctx = document.getElementById('niftyTimelineChart');
-          if(ctx) {
-            const data = report.web_data.charts.nifty_pnl_timeline;
-            new Chart(ctx, {
-              type: 'line',
-              data: {
-                labels: data.dates || [],
-                datasets: [{
-                  label: 'P&L',
-                  data: data.values || [],
-                  borderColor: '#0d6efd',
-                  backgroundColor: 'rgba(13,110,253,0.1)',
-                  fill: true,
-                  tension: 0.4
-                }]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { display: false }
-                },
-                scales: {
-                  y: {
-                    beginAtZero: false,
-                    grid: { color: 'rgba(0,0,0,0.05)' }
-                  }
-                }
+    // NIFTY Timeline Chart
+    {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
+    (function(){
+      const ctx = document.getElementById('niftyTimelineChart');
+      if(ctx) {
+        const data = report.web_data.charts.nifty_pnl_timeline;
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.dates || [],
+            datasets: [{
+              label: 'P&L',
+              data: data.values || [],
+              borderColor: '#0d6efd',
+              backgroundColor: 'rgba(13,110,253,0.1)',
+              fill: true,
+              tension: 0.4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              y: {
+                beginAtZero: false,
+                grid: { color: 'rgba(0,0,0,0.05)' }
               }
-            });
+            }
           }
-        })();
-        {% endif %}
+        });
+      }
+    })();
+    {% endif %}
 
-        // Segment Distribution Chart
-        {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
-        (function(){
-          const ctx = document.getElementById('instrumentChart');
-          if(ctx) {
-            const data = report.web_data.charts.instrument_distribution;
-            new Chart(ctx, {
-              type: 'pie',
-              data: {
-                labels: data.map(d => d.asset_kind),
-                datasets: [{
-                  data: data.map(d => d.value),
-                  backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
-                }]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false
+    // Instrument Distribution Chart
+    {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
+    (function(){
+      const ctx = document.getElementById('instrumentChart');
+      if(ctx) {
+        const data = report.web_data.charts.instrument_distribution;
+        new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: data.map(d => d.asset_kind),
+            datasets: [{
+              data: data.map(d => d.value),
+              backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false
+          }
+        });
+      }
+    })();
+    {% endif %}
+
+    // Segment Distribution Chart
+    {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
+    (function(){
+      const ctx = document.getElementById('segmentChart');
+      const selector = document.getElementById('segmentFilter');
+      if(!ctx || !selector) return;
+
+      const raw = report.web_data.charts.segment_distribution;
+
+      function getFiltered() {
+        let v = selector.value;
+        let sorted = [...raw].sort((a,b)=>b.value-a.value);
+        if(v === "all") return sorted;
+        return sorted.slice(0, parseInt(v));
+      }
+
+      let chart;
+      function draw() {
+        let data = getFiltered();
+        if(chart) chart.destroy();
+        chart = new Chart(ctx, {
+          type:"pie",
+          data:{
+            labels:data.map(x=>x.asset_name),
+            datasets:[{ data:data.map(x=>x.value) }]
+          },
+          options:{
+            responsive:true,
+            maintainAspectRatio:false,
+            plugins:{ legend:{ position:'bottom' } }
+          }
+        });
+      }
+
+      selector.addEventListener("change", draw);
+      draw();
+    })();
+    {% endif %}
+
+    // Persona Radar Chart
+    {% if report.web_data and report.web_data.persona_scores %}
+    (function(){
+      const ctx = document.getElementById('personaRadarChart');
+      if(ctx) {
+        const scores = report.web_data.persona_scores;
+        new Chart(ctx, {
+          type: 'radar',
+          data: {
+            labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
+            datasets: [{
+              label: 'Persona Traits',
+              data: Object.values(scores).map(v => v * 100),
+              borderColor: '#0d6efd',
+              backgroundColor: 'rgba(13,110,253,0.2)',
+              borderWidth: 2,
+              pointRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { stepSize: 20 }
               }
-            });
+            }
           }
-        })();
-        {% endif %}
+        });
+      }
+    })();
+    {% endif %}
 
-        // Instrument Distribution Chart
-        {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
-        (function(){
-  const ctx = document.getElementById('segmentChart');
-  const selector = document.getElementById('segmentFilter');
 
-  if(!ctx) return;
+   // for scrolling
+      // Smooth scroll on click
+document.querySelectorAll('.section-nav .nav-link').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const targetID = this.getAttribute('href').substring(1);
+        const targetEl = document.getElementById(targetID);
 
-  const raw = report.web_data.charts.segment_distribution;
+        window.scrollTo({
+            top: targetEl.offsetTop - 80,
+            behavior: 'smooth'
+        });
+    });
+});
 
-  function getFiltered() {
-    let v = selector.value;
+// ===== ACTIVE LINK HIGHLIGHT ON SCROLL =====
+const sections = document.querySelectorAll('.page-section');
+const navLinks = document.querySelectorAll('.section-nav .nav-link');
 
-    let sorted = [...raw].sort((a,b)=>b.value-a.value);
+const observer = new IntersectionObserver(
+  entries => {
+    entries.forEach(entry => {
+      const id = entry.target.getAttribute('id');
 
-    if(v === "all")
-        return sorted;
+      // When section becomes >40% visible
+      if (entry.isIntersecting) {
+        navLinks.forEach(link =>
+          link.classList.remove('active-section')
+        );
 
-    return sorted.slice(0, parseInt(v));
-  }
+        const activeLink = document.querySelector(
+          `.section-nav .nav-link[data-target="${id}"]`
+        );
 
-  let chart;
-
-  function draw() {
-
-    let data = getFiltered();
-
-    if(chart) chart.destroy();
-
-    chart = new Chart(ctx, {
-      type:"pie",
-      data:{
-        labels:data.map(x=>x.asset_name),
-        datasets:[{
-          data:data.map(x=>x.value),
-        }]
-      },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        plugins:{
-          legend:{ position:'bottom' }
+        if (activeLink) {
+          activeLink.classList.add('active-section');
         }
       }
     });
-
+  },
+  {
+    threshold: 0.4  // triggers highlight when 40% visible
   }
+);
 
-  selector.addEventListener("change", draw);
+// Observe all sections
+sections.forEach(section => observer.observe(section));
+  </script>
 
-  draw();
-
-})();
-        {% endif %}
-
-        // Persona Radar Chart
-        {% if report.web_data and report.web_data.persona_scores %}
-        (function(){
-          const ctx = document.getElementById('personaRadarChart');
-          if(ctx) {
-            const scores = report.web_data.persona_scores;
-            new Chart(ctx, {
-              type: 'radar',
-              data: {
-                labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
-                datasets: [{
-                  label: 'Persona Traits',
-                  data: Object.values(scores).map(v => v * 100),
-                  borderColor: '#0d6efd',
-                  backgroundColor: 'rgba(13,110,253,0.2)',
-                  borderWidth: 2,
-                  pointRadius: 4
-                }]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                  r: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: { stepSize: 20 }
-                  }
-                }
-              }
-            });
-          }
-        })();
-        {% endif %}
-
-
-        </script>
 {% endblock %}

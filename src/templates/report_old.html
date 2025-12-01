@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% include "components/header.html" %}
+{% include "components/executive_summary.html" %}
+
+{% include "components/comprehensive_metrice_dhashboard.html" %}
+{% include "components/charts.html" %}
+
+
+
+{% include "components/positions_table.html" %}
+{% include "components/gainers_n_losers.html" %}
+{% include "components/patterns.html" %}
+
+{% include "components/snapshots_summary.html" %}
+{% include "components/buckets.html" %}
+{% include "components/trade_quality_distribution.html" %}
+{% include "components/holdingh_period_analysis.html" %}
+{% include "components/ai_insights.html" %}
+
+{% include "components/footer.html" %}
+        <!-- Scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+        const report = {{ report|tojson }};
+
+        // P&L Timeline Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
+        (function(){
+          const ctx = document.getElementById('pnlTimelineChart');
+          if(ctx) {
+            const data = report.web_data.charts.pnl_timeline;
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.dates || [],
+                datasets: [{
+                  label: 'P&L',
+                  data: data.values || [],
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.1)',
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                  }
+                }
+              }
+            });
+          }
+        })();
+        {% endif %}
+
+
+        // NIFTY Timeline Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
+        (function(){
+          const ctx = document.getElementById('niftyTimelineChart');
+          if(ctx) {
+            const data = report.web_data.charts.nifty_pnl_timeline;
+            new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.dates || [],
+                datasets: [{
+                  label: 'P&L',
+                  data: data.values || [],
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.1)',
+                  fill: true,
+                  tension: 0.4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: false,
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                  }
+                }
+              }
+            });
+          }
+        })();
+        {% endif %}
+
+        // Segment Distribution Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
+        (function(){
+          const ctx = document.getElementById('instrumentChart');
+          if(ctx) {
+            const data = report.web_data.charts.instrument_distribution;
+            new Chart(ctx, {
+              type: 'pie',
+              data: {
+                labels: data.map(d => d.asset_kind),
+                datasets: [{
+                  data: data.map(d => d.value),
+                  backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false
+              }
+            });
+          }
+        })();
+        {% endif %}
+
+        // Instrument Distribution Chart
+        {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
+        (function(){
+  const ctx = document.getElementById('segmentChart');
+  const selector = document.getElementById('segmentFilter');
+
+  if(!ctx) return;
+
+  const raw = report.web_data.charts.segment_distribution;
+
+  function getFiltered() {
+    let v = selector.value;
+
+    let sorted = [...raw].sort((a,b)=>b.value-a.value);
+
+    if(v === "all")
+        return sorted;
+
+    return sorted.slice(0, parseInt(v));
+  }
+
+  let chart;
+
+  function draw() {
+
+    let data = getFiltered();
+
+    if(chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+      type:"pie",
+      data:{
+        labels:data.map(x=>x.asset_name),
+        datasets:[{
+          data:data.map(x=>x.value),
+        }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{
+          legend:{ position:'bottom' }
+        }
+      }
+    });
+
+  }
+
+  selector.addEventListener("change", draw);
+
+  draw();
+
+})();
+        {% endif %}
+
+        // Persona Radar Chart
+        {% if report.web_data and report.web_data.persona_scores %}
+        (function(){
+          const ctx = document.getElementById('personaRadarChart');
+          if(ctx) {
+            const scores = report.web_data.persona_scores;
+            new Chart(ctx, {
+              type: 'radar',
+              data: {
+                labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
+                datasets: [{
+                  label: 'Persona Traits',
+                  data: Object.values(scores).map(v => v * 100),
+                  borderColor: '#0d6efd',
+                  backgroundColor: 'rgba(13,110,253,0.2)',
+                  borderWidth: 2,
+                  pointRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { stepSize: 20 }
+                  }
+                }
+              }
+            });
+          }
+        })();
+        {% endif %}
+
+
+        </script>
+{% endblock %}

@@ -95,6 +95,47 @@ class OllamaAnalyzer:
 
         return chart_data
 
+    def _beautify_recommendations_html(self, md_text: str) -> str:
+        """
+        Takes LLM Markdown output and converts it into
+        BEAUTIFULLY STYLED HTML COMPONENTS for your UI.
+        """
+
+        import markdown
+        import re
+
+        # Convert markdown → basic HTML first
+        html = markdown.markdown(md_text, extensions=["extra", "tables"])
+
+        # --- Beautify Tables ---
+        html = re.sub(
+            r"<table>",
+            "<div class='table-responsive'><table class='table table-bordered table-sm shadow-sm'>",
+            html
+        )
+        html = html.replace("</table>", "</table></div>")
+
+        # --- Beautify Bullet Sections (wrap in rec-box) ---
+        html = re.sub(
+            r"<ul>",
+            "<div class='rec-box'><ul>",
+            html
+        )
+        html = html.replace("</ul>", "</ul></div>")
+
+        # --- Beautify Checkboxes ---
+        html = html.replace("[ ]", "<span class='checkbox'>☐</span>")
+        html = html.replace("[x]", "<span class='checkbox checked'>☑</span>")
+
+        # --- Optional section title detection ---
+        html = re.sub(
+            r"<h[1-6]>(.*?)</h[1-6]>",
+            r"<h4 class='rec-title'>\1</h4>",
+            html
+        )
+
+        return html
+
 
     # =========================================================
     # Main Integration Function
@@ -310,7 +351,8 @@ Provide a concise but comprehensive trader profile (200-300 words):
 """
         system_prompt = "You are an expert financial analyst specializing in trading behavior analysis."
         self.logger.info("1.1 Generate _analyze_trader_profile from LLM")
-        return self._call_ollama(prompt, system_prompt)
+        raw = self._call_ollama(prompt, system_prompt)
+        return self._beautify_recommendations_html(raw)
 
     def _analyze_risk(self, context: str) -> str:
         """Analyze risk profile"""

@@ -113,7 +113,7 @@ class TradingPersonaAnalyzer:
 
         # PNL cumulative
         pnl_vals = analysis['web_data']['charts']['pnl_timeline']['values']
-        print(pnl_vals)
+        # print(pnl_vals)
         if pnl_vals:
             start = pnl_vals[0]
             norm_pnl_vals = [(v - start) + 100 for v in pnl_vals]

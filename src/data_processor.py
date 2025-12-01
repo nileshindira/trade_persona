@@ -139,7 +139,7 @@ class TradingDataProcessor:
 
             # Build dict: {"2024-01-01": close}
             nifty_data = dict(zip(db_df['date'], db_df['close']))
-            print(nifty_data)
+            # print(nifty_data)
             return nifty_data
 
         except Exception as e:

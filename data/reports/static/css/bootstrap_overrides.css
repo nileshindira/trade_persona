@@ -130,3 +130,110 @@
 .journey-table td, .journey-table th {
   font-size: 0.78rem;
 }
+
+/*AI insignt new */
+
+.ai-insight-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.ai-insight-text h3,
+.ai-insight-text h4 {
+  margin-top: 1rem;
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.ai-insight-text strong {
+  color: #0d6efd;
+}
+
+.ai-insight-text ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.accordion-button {
+  font-size: 1rem;
+  border-radius: 12px !important;
+  transition: 0.25s;
+}
+
+.accordion-button:not(.collapsed) {
+  color: #0d6efd;
+  background: linear-gradient(135deg, rgba(13,110,253,.12), rgba(16,185,129,.12));
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.accordion-item {
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
+
+
+/*AI recommendations css  */
+
+.rec-box {
+    background: #f8fafc;
+    border-left: 4px solid #0d6efd;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+}
+
+.rec-title {
+    margin-top: 1.5rem;
+    margin-bottom: .5rem;
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+.checkbox {
+    margin-right: 6px;
+    color: #0d6efd;
+    font-weight: bold;
+}
+
+.checkbox.checked {
+    color: #16a34a;
+}
+
+/* Navbar CSS *?/* =============================
+   Sticky Section Nav (Improved)
+   ============================= */
+.section-nav {
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    padding: 0.6rem 0.75rem;
+    border-radius: 0 0 0.75rem 0.75rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+/* Default link */
+.section-nav .nav-link {
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 0.35rem 1rem;
+    color: #444;
+    transition: 0.25s;
+}
+
+/* Hover */
+.section-nav .nav-link:hover {
+    background: #ebf3ff;
+    color: #0d6efd;
+}
+
+/* Active link (Automatic) */
+.section-nav .nav-link.active-section {
+    background: linear-gradient(135deg, #0d6efd, #0bbf72);
+    color: #fff !important;
+    box-shadow: 0 4px 10px rgba(13,110,253,0.2);
+}
