@@ -1,311 +1,391 @@
 <!-- ===== COMPREHENSIVE METRICS DASHBOARD ===== -->
-<section id="metrics">
-  <h2 class="section-title"><i class="bi bi-clipboard-data"></i> Comprehensive Metrics Dashboard</h2>
+<section id="metrics" class="page-section metrics-dashboard">
 
   {% set dm = report.detailed_metrics %}
 
-  <!-- Performance Metrics -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-graph-up text-success"></i> Performance Metrics</h5>
-    <div class="stat-grid">
-
-      <!-- REMOVED: Profit Factor (duplicate) -->
-
-      <!-- REMOVED: Sharpe Ratio (duplicate) -->
-
-      <div class="metric-card">
-        <div class="metric-label">Sortino Ratio</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.sortino_ratio or 0) }}</div>
-        <div class="metric-subtext">Downside risk adjusted</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">Return on Capital</div>
-        <div class="metric-value {{ 'text-success' if (dm.return_on_capital or 0)>0 else 'text-danger' }}">
-          {{ '%.2f'|format(dm.return_on_capital or 0) }}%
-        </div>
-        <div class="metric-subtext">ROC percentage</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">Efficiency Ratio</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.efficiency_ratio or 0) }}</div>
-        <div class="metric-subtext">Net PnL / Gross PnL</div>
-      </div>
-
+  <!-- Header -->
+  <div class="metrics-header d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="section-title mb-1">
+        <i class="bi bi-clipboard-data"></i> Comprehensive Metrics Dashboard
+      </h2>
+      <p class="metrics-subtitle mb-0">
+        A high-level, finance-grade view of your risk, performance and trade quality.
+      </p>
+    </div>
+    <div class="metrics-badge">
+      <span class="badge rounded-pill bg-soft-primary text-primary">
+        <i class="bi bi-shield-check me-1"></i> Trader Persona Analytics
+      </span>
     </div>
   </div>
 
-  <!-- Risk Metrics -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-shield-exclamation text-danger"></i> Risk Metrics</h5>
-    <div class="stat-grid">
+  <!-- Layout: 2 columns on desktop -->
+  <div class="row g-4 metrics-layout">
 
-      <!-- REMOVED: Max Drawdown (duplicate) -->
+    <!-- ========== LEFT COLUMN (core performance + risk + win/loss) ========== -->
+    <div class="col-lg-8 d-flex flex-column gap-4">
 
-      <div class="metric-card">
-        <div class="metric-label">Value at Risk (95%)</div>
-        <div class="metric-value text-danger">
-          ₹{{ '%.2f'|format(dm.value_at_risk_95 or 0) }}
-        </div>
-        <div class="metric-subtext">95th percentile loss</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">Downside Deviation</div>
-        <div class="metric-value">₹{{ '%.2f'|format(dm.downside_deviation or 0) }}</div>
-        <div class="metric-subtext">Negative returns volatility</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">PnL Volatility</div>
-        <div class="metric-value">₹{{ '%.2f'|format(dm.pnl_volatility or 0) }}</div>
-        <div class="metric-subtext">Standard deviation</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">PnL Skewness</div>
-        <div class="metric-value {{ 'text-success' if (dm.pnl_skewness or 0)>0 else 'text-danger' }}">
-          {{ '%.2f'|format(dm.pnl_skewness or 0) }}
-        </div>
-        <div class="metric-subtext">Distribution asymmetry</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">PnL Kurtosis</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.pnl_kurtosis or 0) }}</div>
-        <div class="metric-subtext">Tail risk indicator</div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Trading Activity Metrics -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-activity text-primary"></i> Trading Activity</h5>
-    <div class="stat-grid">
-      <div class="metric-card">
-        <div class="metric-label">Avg Trades/Day</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.avg_trades_per_day or 0) }}</div>
-        <div class="metric-subtext">Daily frequency</div>
-      </div>
-<!--        <div class="metric-card">-->
-<!--          <div class="metric-label">Avg Trade Value</div>-->
-<!--          <div class="metric-value">₹{{ '%.0f'|format(dm.avg_trade_value or 0) }}</div>-->
-<!--          <div class="metric-subtext">Per trade</div>-->
-<!--        </div>-->
-      <div class="metric-card">
-        <div class="metric-label">Avg Holding Period</div>
-        <div class="metric-value">{{ '%.0f'|format(dm.avg_holding_period or 0) }}</div>
-        <div class="metric-subtext">Minutes per position</div>
-      </div>
-<!--    <div class="metric-card">-->
-<!--      <div class="metric-label">Avg Volume/Trade</div>-->
-<!--      <div class="metric-value">{{ '%.0f'|format(dm.avg_volume_per_trade or 0) }}</div>-->
-<!--      <div class="metric-subtext">Contract volume</div>-->
-<!--    </div>-->
-      <div class="metric-card">
-        <div class="metric-label">Consecutive Wins</div>
-        <div class="metric-value text-success">{{ dm.consecutive_wins or 0 }}</div>
-        <div class="metric-subtext">Max streak</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">Consecutive Losses</div>
-        <div class="metric-value text-danger">{{ dm.consecutive_losses or 0 }}</div>
-        <div class="metric-subtext">Max streak</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Win/Loss Analysis -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-pie-chart text-info"></i> Win/Loss Analysis</h5>
-    <div class="row g-4">
-      <div class="col-md-6">
-        <div class="stat-grid">
-          <div class="metric-card gradient-bg-success">
-            <div class="metric-label">Avg Win</div>
-            <div class="metric-value text-success">₹{{ '%.2f'|format(dm.avg_win or 0) }}</div>
-            <div class="metric-subtext">Per winning trade</div>
+      <!-- PERFORMANCE OVERVIEW -->
+      <div class="metrics-block card-finance">
+        <div class="metrics-block-header">
+          <div>
+            <span class="block-tag tag-performance">Performance</span>
+            <h5>Risk-Adjusted Performance</h5>
+            <p class="block-subtext">How efficiently your capital is converting into returns.</p>
           </div>
-          <div class="metric-card">
-            <div class="metric-label">Largest Win</div>
-            <div class="metric-value text-success">₹{{ '%.2f'|format(dm.largest_win or 0) }}</div>
-            <div class="metric-subtext">Best trade</div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <!-- Sortino -->
+          <div class="col-md-4">
+            <div class="metric-chip">
+              <div class="metric-chip-label">Sortino Ratio</div>
+              <div class="metric-chip-value">
+                {{ '%.2f'|format(dm.sortino_ratio or 0) }}
+              </div>
+              <div class="metric-chip-sub">Returns vs downside risk</div>
+            </div>
+          </div>
+
+          <!-- ROC -->
+          <div class="col-md-4">
+            <div class="metric-chip">
+              <div class="metric-chip-label">Return on Capital</div>
+              <div class="metric-chip-value {{ 'text-success' if (dm.return_on_capital or 0)>0 else 'text-danger' }}">
+                {{ '%.2f'|format(dm.return_on_capital or 0) }}%
+              </div>
+              <div class="metric-chip-sub">Net PnL ÷ capital deployed</div>
+            </div>
+          </div>
+
+          <!-- Efficiency -->
+          <div class="col-md-4">
+            <div class="metric-chip">
+              <div class="metric-chip-label">Efficiency Ratio</div>
+              <div class="metric-chip-value">
+                {{ '%.2f'|format(dm.efficiency_ratio or 0) }}
+              </div>
+              <div class="metric-chip-sub">Net PnL ÷ gross PnL</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="col-md-6">
-        <div class="stat-grid">
-          <div class="metric-card gradient-bg-danger">
-            <div class="metric-label">Avg Loss</div>
-            <div class="metric-value text-danger">₹{{ '%.2f'|format(dm.avg_loss or 0) }}</div>
-            <div class="metric-subtext">Per losing trade</div>
+      <!-- RISK & VOLATILITY -->
+      <div class="metrics-block card-finance">
+        <div class="metrics-block-header">
+          <div>
+            <span class="block-tag tag-risk">Risk</span>
+            <h5>Risk & Volatility Profile</h5>
+            <p class="block-subtext">How bad your bad days can get and how wild the swings are.</p>
           </div>
-          <div class="metric-card">
-            <div class="metric-label">Largest Loss</div>
-            <div class="metric-value text-danger">₹{{ '%.2f'|format(dm.largest_loss or 0) }}</div>
-            <div class="metric-subtext">Worst trade</div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <!-- VaR -->
+          <div class="col-md-6 col-xl-3">
+            <div class="metric-chip risk-chip">
+              <div class="metric-chip-label d-flex align-items-center justify-content-between">
+                <span>Value at Risk (95%)</span>
+                <i class="bi bi-info-circle-fill text-primary ms-1"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="On a typical bad day, 95% of the time your loss should stay within this amount."></i>
+              </div>
+              <div class="metric-chip-value text-danger">
+                ₹{{ '%.2f'|format(dm.value_at_risk_95 or 0) }}
+              </div>
+              <div class="metric-chip-sub">95th percentile loss</div>
+            </div>
+          </div>
+
+
+
+          <!-- PnL Vol -->
+          <div class="col-md-6 col-xl-3">
+            <div class="metric-chip risk-chip">
+              <div class="metric-chip-label d-flex align-items-center justify-content-between">
+                <span>PnL Volatility</span>
+                <i class="bi bi-info-circle-fill text-primary ms-1"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="How much your daily profit/loss fluctuates. Higher = more unpredictable."></i>
+              </div>
+              <div class="metric-chip-value">
+                ₹{{ '%.2f'|format(dm.pnl_volatility or 0) }}
+              </div>
+              <div class="metric-chip-sub">Standard deviation</div>
+            </div>
+          </div>
+
+          <!-- Skew + Kurtosis (stacked) -->
+          <div class="col-md-6 col-xl-3">
+            <div class="metric-chip risk-chip mb-2">
+              <div class="metric-chip-label d-flex align-items-center justify-content-between">
+                <span>PnL Skewness</span>
+                <i class="bi bi-info-circle-fill text-primary ms-1"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="Tells you if losses are typically deeper than gains (negative skew) or vice versa."></i>
+              </div>
+              <div class="metric-chip-value {{ 'text-success' if (dm.pnl_skewness or 0)>0 else 'text-danger' }}">
+                {{ '%.2f'|format(dm.pnl_skewness or 0) }}
+              </div>
+              <div class="metric-chip-sub">Distribution asymmetry</div>
+            </div>
+          </div>
+            <div class="col-md-6 col-xl-3">
+            <div class="metric-chip risk-chip">
+              <div class="metric-chip-label d-flex align-items-center justify-content-between">
+                <span>PnL Kurtosis</span>
+                <i class="bi bi-info-circle-fill text-primary ms-1"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="Tail risk: how often extreme profit/loss days show up. Higher = fatter tails."></i>
+              </div>
+              <div class="metric-chip-value">
+                {{ '%.2f'|format(dm.pnl_kurtosis or 0) }}
+              </div>
+              <div class="metric-chip-sub">Tail risk indicator</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Score & Quality Metrics -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-star text-warning"></i> Trade Quality Scores</h5>
-    <div class="stat-grid">
-      <div class="metric-card">
-        <div class="metric-label">Avg F-Score</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.avg_f_score or 0) }}</div>
-        <div class="metric-subtext">Fundamental score</div>
-      </div>
+      <!-- WIN / LOSS + RISK / REWARD -->
+      <div class="metrics-block card-finance">
+        <div class="row g-4 align-items-stretch">
 
-      <div class="metric-card">
-        <div class="metric-label">Avg T-Score</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.avg_t_score or 0) }}</div>
-        <div class="metric-subtext">Technical score</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">52W High Hit Rate</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_high or 0) }}%</div>
-        <div class="metric-subtext">Near 52-week highs</div>
-                  <div class="progress-custom mt-2">
-                    <div class="progress-bar-custom" style="width:{{ dm.avg_t_score or 0 }}%"></div>
-                  </div>
+          <!-- Win/Loss distribution -->
+          <div class="col-md-6">
+            <div class="metrics-block-inner">
+              <div class="metrics-block-header mb-2">
+                <span class="block-tag tag-pnl">Win / Loss</span>
+                <h6 class="mb-1">Outcome per Trade</h6>
+                <p class="block-subtext mb-0">How big your average and extreme wins/losses are.</p>
+              </div>
+              <div class="stat-grid compact-grid">
+                <div class="metric-chip gradient-chip-success">
+                  <div class="metric-chip-label">Avg Win</div>
+                  <div class="metric-chip-value text-success">₹{{ '%.2f'|format(dm.avg_win or 0) }}</div>
+                  <div class="metric-chip-sub">Per winning trade</div>
                 </div>
-                <div class="metric-card">
-                  <div class="metric-label">Avg Total Score</div>
-                  <div class="metric-value">{{ '%.1f'|format(dm.avg_total_score or 0) }}</div>
-                  <div class="metric-subtext">Combined quality</div>
-                  <div class="progress-custom mt-2">
-                    <div class="progress-bar-custom" style="width:{{ dm.avg_total_score or 0 }}%"></div>
-                  </div>
+                <div class="metric-chip">
+                  <div class="metric-chip-label">Largest Win</div>
+                  <div class="metric-chip-value text-success">₹{{ '%.2f'|format(dm.largest_win or 0) }}</div>
+                  <div class="metric-chip-sub">Best trade</div>
                 </div>
-                <div class="metric-card">
-                  <div class="metric-label">F-Score Volatility</div>
-                  <div class="metric-value">{{ '%.1f'|format(dm.f_score_volatility or 0) }}</div>
-                  <div class="metric-subtext">Score consistency</div>
+                <div class="metric-chip gradient-chip-danger">
+                  <div class="metric-chip-label">Avg Loss</div>
+                  <div class="metric-chip-value text-danger">₹{{ '%.2f'|format(dm.avg_loss or 0) }}</div>
+                  <div class="metric-chip-sub">Per losing trade</div>
                 </div>
-                <div class="metric-card">
-                  <div class="metric-label">T-Score Volatility</div>
-                  <div class="metric-value">{{ '%.1f'|format(dm.t_score_volatility or 0) }}</div>
-                  <div class="metric-subtext">Score consistency</div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-label">Total Score Volatility</div>
-                  <div class="metric-value">{{ '%.1f'|format(dm.total_score_volatility or 0) }}</div>
-                  <div class="metric-subtext">Overall consistency</div>
+                <div class="metric-chip">
+                  <div class="metric-chip-label">Largest Loss</div>
+                  <div class="metric-chip-value text-danger">₹{{ '%.2f'|format(dm.largest_loss or 0) }}</div>
+                  <div class="metric-chip-sub">Worst trade</div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Score Performance Analysis -->
-            <div class="card p-4 mb-4">
-              <h5 class="fw-bold mb-3"><i class="bi bi-bullseye text-success"></i> Score Performance Analysis</h5>
-              <div class="stat-grid">
-                <div class="metric-card gradient-bg-success">
-                  <div class="metric-label">High-Score Win Rate</div>
-                  <div class="metric-value text-success">{{ '%.1f'|format(dm.high_score_win_rate or 0) }}%</div>
-                  <div class="metric-subtext">When score ≥ 70</div>
+          <!-- Risk / Reward -->
+          <div class="col-md-6">
+            <div class="metrics-block-inner">
+              <div class="metrics-block-header mb-2">
+                <span class="block-tag tag-riskreward">Risk / Reward</span>
+                <h6 class="mb-1">Reward vs Risk Balance</h6>
+                <p class="block-subtext mb-0">How much you earn when right vs lose when wrong.</p>
+              </div>
+
+              <div class="row g-3 mt-1">
+                <div class="col-12">
+                  <div class="metric-chip">
+                    <div class="metric-chip-label">Reward to Risk</div>
+                    <div class="metric-chip-value {{ 'text-success' if (dm.reward_to_risk_balance or 0)>2 else 'text-danger' }}">
+                      {{ '%.2f'|format(dm.reward_to_risk_balance or 0) }}
+                    </div>
+                    <div class="metric-chip-sub">Target ≥ 2.0</div>
+                  </div>
                 </div>
-                <div class="metric-card gradient-bg-danger">
-                  <div class="metric-label">Low-Score Loss Rate</div>
-                  <div class="metric-value text-danger">{{ '%.1f'|format(dm.low_score_loss_rate or 0) }}%</div>
-                  <div class="metric-subtext">When score < 50</div>
+                <div class="col-6">
+                  <div class="metric-chip gradient-chip-success">
+                    <div class="metric-chip-label">Avg Gainer %</div>
+                    <div class="metric-chip-value text-success">
+                      {{ '%.2f'|format(dm.avg_gainer_pct or 0) }}%
+                    </div>
+                    <div class="metric-chip-sub">Winning positions</div>
+                  </div>
                 </div>
-<!--                <div class="metric-card">-->
-<!--                  <div class="metric-label">Score Alignment Effectiveness</div>-->
-<!--                  <div class="metric-value">{{ '%.2f'|format(dm.score_alignment_effectiveness or 0) }}</div>-->
-<!--                  <div class="metric-subtext">Score-profit correlation</div>-->
-<!--                </div>-->
-                <div class="metric-card">
-                  <div class="metric-label">52W High Hit Rate</div>
-                  <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_high or 0) }}%</div>
-                  <div class="metric-subtext">Near 52-week highs</div>
+                <div class="col-6">
+                  <div class="metric-chip gradient-chip-danger">
+                    <div class="metric-chip-label">Avg Loser %</div>
+                    <div class="metric-chip-value text-danger">
+                      {{ '%.2f'|format(dm.avg_loser_pct or 0) }}%
+                    </div>
+                    <div class="metric-chip-sub">Losing positions</div>
+                  </div>
                 </div>
-      <div class="metric-card">
-        <div class="metric-label">52W Low Hit Rate</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_low or 0) }}%</div>
-        <div class="metric-subtext">Near 52-week lows</div>
-      </div>
+              </div>
 
-      <div class="metric-card">
-        <div class="metric-label">All-Time High Hit Rate</div>
-        <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_alltime_high or 0) }}%</div>
-        <div class="metric-subtext">At all-time highs</div>
-      </div>
-    </div>
-  </div>
+            </div>
+          </div>
 
-  <!-- Market Behavior Metrics -->
-<!--  <div class="card p-4 mb-4">-->
-<!--    <h5 class="fw-bold mb-3"><i class="bi bi-graph-down text-info"></i> Market Behavior</h5>-->
-<!--    <div class="stat-grid">-->
-
-
-<!--      <div class="metric-card">-->
-<!--        <div class="metric-label">Close to Open Return</div>-->
-<!--        <div class="metric-value {{ 'text-success' if (dm.avg_close_to_open_return or 0)>0 else 'text-danger' }}">-->
-<!--          {{ '%.2f'|format(dm.avg_close_to_open_return or 0) }}%-->
-<!--        </div>-->
-<!--        <div class="metric-subtext">Overnight change</div>-->
-<!--      </div>-->
-
-<!--      <div class="metric-card">-->
-<!--        <div class="metric-label">Volatility Index</div>-->
-<!--        <div class="metric-value">{{ '%.2f'|format(dm.volatility_index or 0) }}</div>-->
-<!--        <div class="metric-subtext">Market volatility</div>-->
-<!--      </div>-->
-
-<!--      <div class="metric-card">-->
-<!--        <div class="metric-label">Volume Volatility</div>-->
-<!--        <div class="metric-value">{{ '%.2f'|format(dm.volume_volatility or 0) }}</div>-->
-<!--        <div class="metric-subtext">Volume fluctuation</div>-->
-<!--      </div>-->
-
-<!--      <div class="metric-card">-->
-<!--        <div class="metric-label">Trade Timing Bias</div>-->
-<!--        <div class="metric-value">{{ '%.2f'|format(dm.trade_timing_bias or 0) }}</div>-->
-<!--        <div class="metric-subtext">Entry timing quality</div>-->
-<!--      </div>-->
-
-<!--      <div class="metric-card">-->
-<!--        <div class="metric-label">Volume Following</div>-->
-<!--        <div class="metric-value">{{ '%.2f'|format(dm.volume_following_behavior or 0) }}</div>-->
-<!--        <div class="metric-subtext">Volume trend alignment</div>-->
-<!--      </div>-->
-<!--    </div>-->
-<!--  </div>-->
-
-  <!-- Reward/Risk Balance -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-arrows-angle-contract text-warning"></i> Risk/Reward Balance</h5>
-    <div class="stat-grid">
-      <div class="metric-card">
-        <div class="metric-label">Reward to Risk Balance</div>
-        <div class="metric-value {{ 'text-success' if (dm.reward_to_risk_balance or 0)>2 else 'text-danger' }}">
-          {{ '%.2f'|format(dm.reward_to_risk_balance or 0) }}
         </div>
-        <div class="metric-subtext">Target: ≥ 2.0</div>
       </div>
 
-      <div class="metric-card">
-        <div class="metric-label">Avg Gainer %</div>
-        <div class="metric-value text-success">{{ '%.2f'|format(dm.avg_gainer_pct or 0) }}%</div>
-        <div class="metric-subtext">Winning positions</div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-label">Avg Loser %</div>
-        <div class="metric-value text-danger">{{ '%.2f'|format(dm.avg_loser_pct or 0) }}%</div>
-        <div class="metric-subtext">Losing positions</div>
-      </div>
     </div>
-  </div>
 
+    <!-- ========== RIGHT COLUMN (rhythm + scores) ========== -->
+    <div class="col-lg-4 d-flex flex-column gap-4">
+
+      <!-- TRADING ACTIVITY -->
+      <div class="metrics-block card-finance tall">
+        <div class="metrics-block-header mb-2">
+          <span class="block-tag tag-activity">Rhythm</span>
+          <h5 class="mb-1">Trading Activity</h5>
+          <p class="block-subtext mb-0">How frequently you trade and how long you hold positions.</p>
+        </div>
+
+        <div class="stat-grid compact-grid mt-2">
+          <div class="metric-chip">
+            <div class="metric-chip-label">Avg Trades / Day</div>
+            <div class="metric-chip-value">
+              {{ '%.1f'|format(dm.avg_trades_per_day or 0) }}
+            </div>
+            <div class="metric-chip-sub">Daily frequency</div>
+          </div>
+          <div class="metric-chip">
+            <div class="metric-chip-label">Avg Holding Period</div>
+            <div class="metric-chip-value">
+              {{ '%.0f'|format(dm.avg_holding_period or 0) }}
+            </div>
+            <div class="metric-chip-sub">Minutes per position</div>
+          </div>
+          <div class="metric-chip gradient-chip-success">
+            <div class="metric-chip-label">Consecutive Wins</div>
+            <div class="metric-chip-value text-success">{{ dm.consecutive_wins or 0 }}</div>
+            <div class="metric-chip-sub">Best win streak</div>
+          </div>
+          <div class="metric-chip gradient-chip-danger">
+            <div class="metric-chip-label">Consecutive Losses</div>
+            <div class="metric-chip-value text-danger">{{ dm.consecutive_losses or 0 }}</div>
+            <div class="metric-chip-sub">Worst loss streak</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRADE QUALITY SCORES -->
+      <div class="metrics-block card-finance tall">
+        <div class="metrics-block-header mb-2">
+          <span class="block-tag tag-quality">Quality</span>
+          <h5 class="mb-1">Trade Quality & Score Stability</h5>
+          <p class="block-subtext mb-0">How strong and consistent your scoring framework is.</p>
+        </div>
+
+        <div class="quality-grid mt-2">
+          <!-- Core scores -->
+          <div class="quality-row">
+            <div class="quality-label">Avg F-Score</div>
+            <div class="quality-value">{{ '%.1f'|format(dm.avg_f_score or 0) }}</div>
+            <div class="quality-bar">
+              <span style="width: {{ dm.avg_f_score or 0 }}%"></span>
+            </div>
+          </div>
+
+          <div class="quality-row">
+            <div class="quality-label">Avg T-Score</div>
+            <div class="quality-value">{{ '%.1f'|format(dm.avg_t_score or 0) }}</div>
+            <div class="quality-bar">
+              <span style="width: {{ dm.avg_t_score or 0 }}%"></span>
+            </div>
+          </div>
+
+          <div class="quality-row">
+            <div class="quality-label">Avg Total Score</div>
+            <div class="quality-value">{{ '%.1f'|format(dm.avg_total_score or 0) }}</div>
+            <div class="quality-bar">
+              <span style="width: {{ dm.avg_total_score or 0 }}%"></span>
+            </div>
+          </div>
+
+          <!-- Volatilities -->
+          <div class="quality-row mt-3">
+            <div class="quality-label">F-Score Volatility</div>
+            <div class="quality-value small-val">
+              {{ '%.1f'|format(dm.f_score_volatility or 0) }}
+            </div>
+          </div>
+
+          <div class="quality-row">
+            <div class="quality-label">T-Score Volatility</div>
+            <div class="quality-value small-val">
+              {{ '%.1f'|format(dm.t_score_volatility or 0) }}
+            </div>
+          </div>
+
+          <div class="quality-row">
+            <div class="quality-label">Total Score Volatility</div>
+            <div class="quality-value small-val">
+              {{ '%.1f'|format(dm.total_score_volatility or 0) }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCORE PERFORMANCE -->
+      <div class="metrics-block card-finance tall">
+        <div class="metrics-block-header mb-2">
+          <span class="block-tag tag-signal">Signals</span>
+          <h5 class="mb-1">Score-Driven Performance</h5>
+          <p class="block-subtext mb-0">How well your high-score trades are paying off.</p>
+        </div>
+
+        <div class="stat-grid compact-grid mt-2">
+          <div class="metric-chip gradient-chip-success">
+            <div class="metric-chip-label">High-Score Win Rate</div>
+            <div class="metric-chip-value text-success">
+              {{ '%.1f'|format(dm.high_score_win_rate or 0) }}%
+            </div>
+            <div class="metric-chip-sub">When score ≥ 70</div>
+          </div>
+
+          <div class="metric-chip gradient-chip-danger">
+            <div class="metric-chip-label">Low-Score Loss Rate</div>
+            <div class="metric-chip-value text-danger">
+              {{ '%.1f'|format(dm.low_score_loss_rate or 0) }}%
+            </div>
+            <div class="metric-chip-sub">When score &lt; 50</div>
+          </div>
+
+          <div class="metric-chip">
+            <div class="metric-chip-label">52W High Hit Rate</div>
+            <div class="metric-chip-value">
+              {{ '%.1f'|format(dm.hit_rate_52w_high or 0) }}%
+            </div>
+            <div class="metric-chip-sub">Near 52-week highs</div>
+          </div>
+
+          <div class="metric-chip">
+            <div class="metric-chip-label">52W Low Hit Rate</div>
+            <div class="metric-chip-value">
+              {{ '%.1f'|format(dm.hit_rate_52w_low or 0) }}%
+            </div>
+            <div class="metric-chip-sub">Near 52-week lows</div>
+          </div>
+
+          <div class="metric-chip">
+            <div class="metric-chip-label">All-Time High Hit Rate</div>
+            <div class="metric-chip-value">
+              {{ '%.1f'|format(dm.hit_rate_alltime_high or 0) }}%
+            </div>
+            <div class="metric-chip-sub">At all-time highs</div>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- /right column -->
+
+  </div> <!-- /row -->
 </section>

@@ -237,3 +237,361 @@
     color: #fff !important;
     box-shadow: 0 4px 10px rgba(13,110,253,0.2);
 }
+
+
+/*css for making heading collapsable */
+/* ===== Collapsible Section ===== */
+.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 1.3rem;
+    padding: 10px 0;
+    color: #1a1a1a;
+}
+
+.collapsible-header i {
+    transition: transform 0.25s ease;
+}
+
+.collapsible-header.active i {
+    transform: rotate(180deg);
+}
+
+.collapsible-content {
+    overflow: hidden;
+    transition: max-height none !important;
+}
+
+
+/*css for tips tool */
+.tooltip-large .tooltip-inner {
+    max-width: 260px !important;
+    background-color: #0d6efd !important;
+    color: #fff !important;
+    padding: 10px 14px !important;
+    font-size: 0.82rem !important;
+    text-align: left !important;
+    border-radius: 8px !important;
+    line-height: 1.35;
+    white-space: pre-line !important;
+}
+
+.tooltip-large.bs-tooltip-auto[data-popper-placement^=right] .tooltip-arrow::before {
+    border-right-color: #0d6efd !important;
+}
+
+
+/*css for metrics section new */
+/* -----------------------------
+   GLOBAL NEUMORPHIC THEME
+-------------------------------- */
+body {
+  background: #e9edf5;
+  font-family: "Inter", sans-serif;
+  color: #2b2b2b;
+}
+
+/* SECTION TITLE */
+.section-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 1.8rem;
+  color: #222;
+}
+
+/* CARD BASE */
+.metrics-section {
+  background: #e9edf5;
+  padding: 25px;
+  margin-bottom: 28px;
+  border-radius: 22px;
+  box-shadow:
+    10px 10px 22px #c5c9d3,
+    -10px -10px 22px #ffffff;
+}
+
+/* GRID LAYOUT */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 20px;
+}
+
+/* NEUMORPHIC METRIC BOX */
+.metric-box {
+  background: #e9edf5;
+  padding: 18px 20px;
+  border-radius: 18px;
+  box-shadow:
+    5px 5px 12px #c5c9d3,
+    -5px -5px 12px #ffffff;
+  transition: 0.2s ease;
+}
+
+.metric-box:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    8px 8px 16px #c3c7d1,
+    -8px -8px 16px #ffffff;
+}
+
+/* LABEL */
+.metric-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #333;
+}
+
+/* MAIN VALUE */
+.metric-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+
+/* SUBTEXT */
+.metric-subtext {
+  font-size: 0.8rem;
+  margin-top: 4px;
+  color: #666;
+}
+
+/* CATEGORY COLORS */
+.perf-box { border-left: 5px solid #4caf50; }
+.risk-box { border-left: 5px solid #e53935; }
+.activity-box { border-left: 5px solid #1e88e5; }
+.quality-box { border-left: 5px solid #ffb300; }
+.reward-box { border-left: 5px solid #7b1fa2; }
+
+/* TOOLTIP OVERRIDE */
+.tooltip-large .tooltip-inner {
+  max-width: 220px;
+  text-align: left;
+  font-size: 0.78rem;
+  padding: 8px 10px;
+}
+
+/*Additional css for metric */
+/* ===== Finance-style metrics dashboard ===== */
+.metrics-dashboard {
+  margin-top: 1.5rem;
+}
+
+.metrics-header .section-title {
+  font-size: 1.4rem;
+}
+
+.metrics-subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.bg-soft-primary {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.card-finance {
+  background: #f6f8fc;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(148, 163, 184, 0.1);
+}
+
+/* Block header + tags */
+.metrics-block-header h5,
+.metrics-block-header h6 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.block-subtext {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+.block-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.tag-performance { background: rgba(16, 185, 129, 0.08); color: #059669; }
+.tag-risk        { background: rgba(248, 113, 113, 0.08); color: #dc2626; }
+.tag-pnl         { background: rgba(59, 130, 246, 0.08); color: #2563eb; }
+.tag-riskreward  { background: rgba(245, 158, 11, 0.08); color: #d97706; }
+.tag-activity    { background: rgba(59, 130, 246, 0.08); color: #2563eb; }
+.tag-quality     { background: rgba(139, 92, 246, 0.08); color: #7c3aed; }
+.tag-signal      { background: rgba(34, 197, 94, 0.08); color: #16a34a; }
+
+/* Metric chips */
+.stat-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.stat-grid.compact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metric-chip {
+  border-radius: 16px;
+  background: radial-gradient(circle at top left, rgba(255,255,255,0.9), #eef1f8);
+  padding: 10px 12px;
+  box-shadow:
+    0 10px 30px rgba(15,23,42,0.06),
+    0 0 0 1px rgba(148,163,184,0.15);
+}
+
+.metric-chip-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.metric-chip-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-top: 4px;
+  color: #111827;
+}
+
+.metric-chip-sub {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.gradient-chip-success {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.14), #eef7f3);
+}
+
+.gradient-chip-danger {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.12), #fdf2f2);
+}
+
+.risk-chip {
+  border-left: 3px solid rgba(239, 68, 68, 0.4);
+}
+
+/* Right column heights */
+.metrics-block.tall {
+  min-height: 260px;
+}
+
+/* Quality rows */
+.quality-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quality-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.quality-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.quality-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.quality-value.small-val {
+  font-size: 0.82rem;
+}
+
+.quality-bar {
+  grid-column: 1 / span 2;
+  height: 5px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.quality-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+}
+
+/* Tooltip size for i-icons */
+.tooltip .tooltip-inner {
+  max-width: 260px;
+  text-align: left;
+}
+
+
+/* Executive Summary css for pnl snapshot and executive summary */
+/* ===========================================
+   EXECUTIVE SUMMARY — DRIBBBLE STYLE
+=========================================== */
+
+.exec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 24px;
+}
+
+.exec-card {
+  background: linear-gradient(135deg, #ffffff, #f3f6fb);
+  border-radius: 22px;
+  padding: 22px 24px;
+  box-shadow:
+    inset -3px -3px 8px rgba(255,255,255,0.8),
+    inset 3px 3px 8px rgba(0,0,0,0.06),
+    0 12px 22px rgba(0,0,0,0.05);
+  transition: 0.25s ease;
+}
+
+.exec-card:hover {
+  transform: translateY(-6px);
+  box-shadow:
+    inset -4px -4px 10px rgba(255,255,255,0.9),
+    inset 4px 4px 12px rgba(0,0,0,0.08),
+    0 16px 28px rgba(0,0,0,0.08);
+}
+
+.exec-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.exec-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+/* Risk pill styles */
+.risk-pill {
+  padding: 3px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.pill-danger { background: #dc2626; }
+.pill-warning { background: #d97706; }
+.pill-success { background: #16a34a; }

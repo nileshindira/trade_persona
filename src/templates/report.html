@@ -15,65 +15,96 @@
 
     <li class="nav-item"><a class="nav-link" data-target="charts" href="#charts"><i class="bi bi-graph-up-arrow me-1"></i> Charts</a></li>
 
+    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i class="bi bi-person-badge me-1"></i> Persona</a></li>
+
     <li class="nav-item"><a class="nav-link" data-target="positions" href="#positions"><i class="bi bi-box-seam me-1"></i> Positions</a></li>
 
-    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i class="bi bi-grid-3x3-gap me-1"></i> Buckets</a></li>
-
-    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i class="bi bi-person-badge me-1"></i> Persona</a></li>
+    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i class="bi bi-grid-3x3-gap me-1"></i> Patterns & Buckets</a></li>
 
     <li class="nav-item"><a class="nav-link" data-target="ai_insights" href="#ai_insights"><i class="bi bi-stars me-1"></i> AI Insights</a></li>
 
-    <li class="nav-item"><a class="nav-link" data-target="snapshots" href="#snapshots"><i class="bi bi-camera-reels me-1"></i> Snapshots</a></li>
+
 
   </ul>
 </nav>
 
-  <main class="mt-2">
+<main class="mt-2">
 
-    {# ===== OVERVIEW / EXEC SUMMARY ===== #}
-    <section id="overview" class="page-section">
-      {% include "components/executive_summary.html" %}
-    </section>
+    <!-- ========== OVERVIEW ========== -->
+    <div class="collapsible-header" data-target="overview_block">
+        <span>📊 Overview</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="overview_block" class="collapsible-content">
+        <section id="overview" class="page-section">
+            {% include "components/executive_summary.html" %}
+        </section>
+    </div>
 
-    {# ===== METRICS DASHBOARD ===== #}
-    <section id="metrics" class="page-section">
-      {% include "components/comprehensive_metrice_dhashboard.html" %}
-    </section>
 
-    {# ===== CHARTS: P&L, NIFTY, SEGMENT, INSTRUMENT, PERSONA ===== #}
-    <section id="charts" class="page-section">
-      {% include "components/charts.html" %}
-      {% include "components/time_based_performance_chart.html" %}
-    </section>
 
-    {# ===== POSITIONS, GAINERS & LOSERS ===== #}
-    <section id="positions" class="page-section">
-      {% include "components/positions_table.html" %}
-      {% include "components/gainers_n_losers.html" %}
-    </section>
+    <!-- ========== METRICS ========== -->
+    <div class="collapsible-header" data-target="metrics_block">
+        <span>📈 Metrics Dashboard</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="metrics_block" class="collapsible-content">
+        <section id="metrics" class="page-section">
+            {% include "components/comprehensive_metrice_dhashboard.html" %}
+        </section>
+    </div>
 
-    {# ===== PATTERNS & BUCKETS ===== #}
-    <section id="buckets" class="page-section">
-      {% include "components/patterns.html" %}
-      {% include "components/buckets.html" %}
-      {% include "components/trade_quality_distribution.html" %}
-      {% include "components/holdingh_period_analysis.html" %}
-    </section>
+    <!-- ========== CHARTS ========== -->
+    <div class="collapsible-header" data-target="charts_block">
+        <span>📉 Charts</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="charts_block" class="collapsible-content">
+        <section id="charts" class="page-section">
+            {% include "components/charts.html" %}
+            {% include "components/time_based_performance_chart.html" %}
+        </section>
+    </div>
 
-    {# ===== SNAPSHOTS / SUMMARY CARDS ===== #}
-    <section id="snapshots" class="page-section">
-      {% include "components/snapshots_summary.html" %}
-    </section>
+    <!-- ========== POSITIONS ========== -->
+    <div class="collapsible-header" data-target="positions_block">
+        <span>📦 Positions</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="positions_block" class="collapsible-content">
+        <section id="positions" class="page-section">
+            {% include "components/positions_table.html" %}
+            {% include "components/gainers_n_losers.html" %}
+        </section>
+    </div>
 
-    {# ===== AI INSIGHTS & RECOMMENDATIONS ===== #}
-    <section id="ai_insights" class="page-section">
-      {% include "components/ai_insights.html" %}
+    <!-- ========== PATTERNS + BUCKETS ========== -->
+    <div class="collapsible-header" data-target="buckets_block">
+        <span>🧩 Patterns & Buckets</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="buckets_block" class="collapsible-content">
+        <section id="buckets" class="page-section">
+            {% include "components/patterns.html" %}
+            {% include "components/buckets.html" %}
+            {% include "components/trade_quality_distribution.html" %}
+            {% include "components/holdingh_period_analysis.html" %}
+        </section>
+    </div>
 
-    </section>
+    <!-- ========== AI INSIGHTS ========== -->
+    <div class="collapsible-header" data-target="ai_block">
+        <span>🤖 AI Insights</span>
+        <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="ai_block" class="collapsible-content">
+        <section id="ai_insights" class="page-section">
+            {% include "components/ai_insights.html" %}
+        </section>
+    </div>
 
     {% include "components/footer.html" %}
-
-  </main>
+</main>
 
   {# =========================
      SCRIPTS (same as before)
@@ -303,6 +334,31 @@ const observer = new IntersectionObserver(
 
 // Observe all sections
 sections.forEach(section => observer.observe(section));
+
+
+//for mkaing collapsable js
+document.querySelectorAll('.collapsible-header').forEach(header => {
+    const targetID = header.getAttribute('data-target');
+    const content = document.getElementById(targetID);
+
+    header.addEventListener('click', () => {
+        header.classList.toggle('active');
+        content.classList.toggle('open');
+    });
+});
+
+
+//additing tool tips explantation in risk metrics // Enable Bootstrap tooltips
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+  return new bootstrap.Tooltip(tooltipTriggerEl)
+})
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+  new bootstrap.Tooltip(el);
+});
+
+
+
   </script>
 
 {% endblock %}
