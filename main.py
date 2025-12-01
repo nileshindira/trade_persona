@@ -3,7 +3,7 @@
 Trading Persona Analyzer - Main Application
 Analyze trading patterns and generate comprehensive insights using local LLMs
 """
-
+import pandas as pd
 import yaml
 import logging
 import argparse
@@ -51,7 +51,7 @@ class TradingPersonaAnalyzer:
 
 
     def analyze(self, data_filepath: str, trader_name: str = "Trader",
-                output_dir: str = "data/reports", include_ema: bool = True):
+                output_dir: str = "data/reports", include_ema: bool = True, pnl_csv: str = False):
         """Run complete analysis pipeline"""
 
         logger.info(f"Starting analysis for {trader_name}")
@@ -59,7 +59,11 @@ class TradingPersonaAnalyzer:
         # Step 1: Load and process data
         logger.info("Loading data...")
         df = self.data_processor.load_data(data_filepath)
-        nifty_chart_data = self.data_processor.get_nifty_data(df)
+        pnl_csv_df = pd.read_csv(pnl_csv)
+
+        # 🔥 Fix: force Date column into proper datetime format
+        pnl_csv_df['Date'] = pd.to_datetime(pnl_csv_df['Date'], errors='coerce')
+        nifty_chart_data = self.data_processor.get_nifty_data(pnl_csv_df)
 
         # Validate data
         is_valid, missing_cols = self.data_processor.validate_data(df)
@@ -90,7 +94,7 @@ class TradingPersonaAnalyzer:
         #
         # Step 2: Calculate metrics
         logger.info("Calculating metrics...")
-        metrics = self.metrics_calculator.calculate_all_metrics(df)
+        metrics = self.metrics_calculator.calculate_all_metrics(df,pnl_csv)
 
         # # Add EMA stats to metrics if available
         # if ema_stats:
@@ -109,6 +113,7 @@ class TradingPersonaAnalyzer:
 
         # PNL cumulative
         pnl_vals = analysis['web_data']['charts']['pnl_timeline']['values']
+        print(pnl_vals)
         if pnl_vals:
             start = pnl_vals[0]
             norm_pnl_vals = [(v - start) + 100 for v in pnl_vals]
@@ -175,15 +180,18 @@ def main():
     parser.add_argument('--config', default='config.yaml', help='Config file path')
     parser.add_argument('--output-dir', default='data/reports', help='Output directory')
     parser.add_argument('--no-ema', action='store_true', help='Skip EMA score calculation')
-
+    parser.add_argument('--pnl-csv', help='Path to P&L CSV file', required=False)
     args = parser.parse_args()
 
     analyzer = TradingPersonaAnalyzer(args.config)
+    pnl_csv = args.pnl_csv
+
     report = analyzer.analyze(
         args.data_file,
         args.trader_name,
         args.output_dir,
-        include_ema=not args.no_ema
+        include_ema=not args.no_ema,
+        pnl_csv = pnl_csv
     )
 
     if report:

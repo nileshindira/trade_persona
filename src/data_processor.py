@@ -119,7 +119,7 @@ class TradingDataProcessor:
             )
 
             # Extract unique dates AND convert to string
-            dates = df['trade_date'].dt.strftime("%Y-%m-%d").unique().tolist()
+            dates = df['Date'].dt.strftime("%m/%d/%Y").unique().tolist()
 
             # SQL with placeholders
             query = f"""
@@ -139,7 +139,7 @@ class TradingDataProcessor:
 
             # Build dict: {"2024-01-01": close}
             nifty_data = dict(zip(db_df['date'], db_df['close']))
-
+            print(nifty_data)
             return nifty_data
 
         except Exception as e:

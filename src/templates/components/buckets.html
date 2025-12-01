@@ -1,95 +1,119 @@
-          <!-- ===== BUCKETS ===== -->
-          <section id="buckets" class="mt-4">
-            {% set dm = report.detailed_metrics %}
-            <h4 class="section-title"><i class="bi bi-percent"></i> Performance Buckets (Open Positions)</h4>
-            {% if dm.buckets %}
-              <div class="row g-3">
-                {% for k,v in dm.buckets.items() %}
-                <div class="col-sm-6 col-lg-3">
-                  <div class="card p-3 h-100 gradient-bg-primary">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="fw-bold fs-5">{{ k }}</div>
-                      <span class="badge bg-primary">{{ v.count or 0 }}</span>
-                    </div>
-                    <div class="small-muted">
-                      <div>MTM Share: {{ '%.1f'|format(v.mtm_share_pct or 0) }}%</div>
-                      <div>Total Value: ₹{{ '%.0f'|format(v.total_value or 0) }}</div>
-                    </div>
+<!-- ===== PERFORMANCE BUCKETS ===== -->
+<section id="buckets" class="mt-4">
+  {% set dm = report.detailed_metrics %}
+  <h4 class="section-title">
+    <i class="bi bi-bar-chart-line"></i> Performance Buckets (Open Positions)
+  </h4>
 
-                    <button class="btn btn-sm btn-outline-primary mt-3 no-print"
-                            data-bs-toggle="collapse" data-bs-target="#bucket{{loop.index}}">
-                      <i class="bi bi-eye"></i> View Details
-                    </button>
+  {% if dm.buckets %}
+  <div class="row g-4">
 
-                    <div class="collapse mt-3" id="bucket{{loop.index}}">
-                      {% if v.list and v.list|length>0 %}
-                        <ul class="list-group list-group-flush small">
-                          {% set outer_index = loop.index %}
-                            {% for s in v.list %}
-                              <li class="list-group-item bg-transparent p-2">
-                                <div class="d-flex justify-content-between align-items-center">
-                                  <span><i class="bi bi-dot"></i> {{ s }}</span>
-                                  <button class="btn btn-xs btn-link p-0"
-                                          data-bs-toggle="collapse"
-                                          data-bs-target="#journey{{outer_index}}_{{loop.index}}">
-                                    <i class="bi bi-info-circle"></i>
-                                  </button>
-                                </div>
-                              </li>
-                              <div class="collapse" id="journey{{outer_index}}_{{loop.index}}">
-                                {% set J = (dm.symbol_journeys[s] if (dm.symbol_journeys and (s in dm.symbol_journeys)) else None) %}
-                                {% if J %}
-                                  <div class="table-responsive mt-2">
-                                    <table class="table table-sm table-striped">
-                                      <thead>
-                                        <tr>
-                                          <th>Leg</th>
-                                          <th class="text-end">Buy</th>
-                                          <th class="text-end">Sell</th>
-                                          <th class="text-end">Qty</th>
-                                          <th class="text-end">Value</th>
-                                          <th class="text-end">P&L</th>
-                                          <th class="text-end">Days</th>
-                                          <th class="text-end">Return %</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {% for leg in J %}
-                                          <tr>
-                                            <td>{{ loop.index }}</td>
-                                            <td class="text-end">₹{{ '%.2f'|format(leg.buy_rate or 0) }}</td>
-                                            <td class="text-end">₹{{ '%.2f'|format(leg.sell_rate or 0) }}</td>
-                                            <td class="text-end">{{ leg.qty or 0 }}</td>
-                                            <td class="text-end">₹{{ '%.2f'|format(leg.value or 0) }}</td>
-                                            <td class="text-end {{ 'text-success' if (leg.pnl or 0)>=0 else 'text-danger' }}">
-                                              ₹{{ '%.2f'|format(leg.pnl or 0) }}
-                                            </td>
-                                            <td class="text-end">{{ leg.holding_days or '-' }}</td>
-                                            <td class="text-end {{ 'text-success' if (leg.return_pct or 0)>=0 else 'text-danger' }}">
-                                              {{ '%.2f'|format(leg.return_pct or 0) }}%
-                                            </td>
-                                          </tr>
-                                        {% endfor %}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                {% else %}
-                                  <div class="alert alert-secondary mt-2 small">
-                                    Trade journey not available for {{ s }}.
-                                  </div>
-                                {% endif %}
-                              </div>
-                            {% endfor %}
-                        </ul>
-                      {% else %}
-                        <div class="alert alert-secondary mt-2">No symbols in this bucket.</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </div>
-                {% endfor %}
+    {% for k,v in dm.buckets.items() %}
+    {% set pct = k.replace('%','').replace('>','').replace('<','').split('-')[0]|int %}
+    {% set color_class = 
+        'bucket-neg' if pct < 0 else 
+        'bucket-low' if pct < 20 else 
+        'bucket-mid' if pct < 80 else 
+        'bucket-high' 
+    %}
+
+    <div class="col-sm-6 col-lg-3">
+      <div class="bucket-card {{ color_class }} h-100">
+
+        <!-- HEADER -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-bold fs-5">{{ k }}</div>
+          <span class="bucket-badge">{{ v.count or 0 }}</span>
+        </div>
+
+        <!-- METRICS -->
+        <div class="bucket-meta">
+          <div><span class="label">MTM Share:</span> {{ '%.1f'|format(v.mtm_share_pct or 0) }}%</div>
+          <div><span class="label">Total Value:</span> ₹{{ '%.0f'|format(v.total_value or 0) }}</div>
+        </div>
+
+        <!-- DETAILS BUTTON -->
+        <button class="btn btn-sm btn-outline-dark w-100 mt-3 no-print"
+          data-bs-toggle="collapse" data-bs-target="#bucket{{loop.index}}">
+          <i class="bi bi-eye"></i> View Trades
+        </button>
+
+        <!-- COLLAPSE CONTENT -->
+        <div class="collapse mt-3" id="bucket{{loop.index}}">
+          {% if v.list and v.list|length>0 %}
+          <ul class="list-group list-group-flush small">
+
+            {% set outer_index = loop.index %}
+            {% for s in v.list %}
+            <li class="list-group-item bucket-list-item">
+
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="symbol"><i class="bi bi-circle-fill me-1"></i> {{ s }}</span>
+
+                <button class="btn btn-xs btn-link p-0"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#journey{{outer_index}}_{{loop.index}}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
               </div>
-            {% else %}
-              <div class="alert alert-secondary">Bucket analysis not available.</div>
-            {% endif %}
-          </section>
+
+              <!-- JOURNEY TABLE -->
+              <div class="collapse" id="journey{{outer_index}}_{{loop.index}}">
+                {% set J = dm.symbol_journeys[s] if dm.symbol_journeys and (s in dm.symbol_journeys) else None %}
+                {% if J %}
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm table-striped journey-table">
+                    <thead>
+                      <tr>
+                        <th>Leg</th>
+                        <th class="text-end">Buy</th>
+                        <th class="text-end">Sell</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">Value</th>
+                        <th class="text-end">P&L</th>
+                        <th class="text-end">Days</th>
+                        <th class="text-end">Return %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for leg in J %}
+                      <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="text-end">₹{{ '%.2f'|format(leg.buy_rate or 0) }}</td>
+                        <td class="text-end">₹{{ '%.2f'|format(leg.sell_rate or 0) }}</td>
+                        <td class="text-end">{{ leg.qty or 0 }}</td>
+                        <td class="text-end">₹{{ '%.2f'|format(leg.value or 0) }}</td>
+                        <td class="text-end {{ 'text-success' if (leg.pnl or 0)>=0 else 'text-danger' }}">
+                          ₹{{ '%.2f'|format(leg.pnl or 0) }}
+                        </td>
+                        <td class="text-end">{{ leg.holding_days or '-' }}</td>
+                        <td class="text-end {{ 'text-success' if (leg.return_pct or 0)>=0 else 'text-danger' }}">
+                          {{ '%.2f'|format(leg.return_pct or 0) }}%
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% else %}
+                <div class="alert alert-secondary mt-2 small">
+                  Trade journey not available for {{ s }}.
+                </div>
+                {% endif %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="alert alert-secondary mt-2">No symbols in this bucket.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="alert alert-secondary">Bucket analysis not available.</div>
+  {% endif %}
+</section>

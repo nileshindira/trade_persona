@@ -89,21 +89,21 @@
         <div class="metric-value">{{ '%.1f'|format(dm.avg_trades_per_day or 0) }}</div>
         <div class="metric-subtext">Daily frequency</div>
       </div>
-        <div class="metric-card">
-          <div class="metric-label">Avg Trade Value</div>
-          <div class="metric-value">₹{{ '%.0f'|format(dm.avg_trade_value or 0) }}</div>
-          <div class="metric-subtext">Per trade</div>
-        </div>
+<!--        <div class="metric-card">-->
+<!--          <div class="metric-label">Avg Trade Value</div>-->
+<!--          <div class="metric-value">₹{{ '%.0f'|format(dm.avg_trade_value or 0) }}</div>-->
+<!--          <div class="metric-subtext">Per trade</div>-->
+<!--        </div>-->
       <div class="metric-card">
         <div class="metric-label">Avg Holding Period</div>
         <div class="metric-value">{{ '%.0f'|format(dm.avg_holding_period or 0) }}</div>
         <div class="metric-subtext">Minutes per position</div>
       </div>
-    <div class="metric-card">
-      <div class="metric-label">Avg Volume/Trade</div>
-      <div class="metric-value">{{ '%.0f'|format(dm.avg_volume_per_trade or 0) }}</div>
-      <div class="metric-subtext">Contract volume</div>
-    </div>
+<!--    <div class="metric-card">-->
+<!--      <div class="metric-label">Avg Volume/Trade</div>-->
+<!--      <div class="metric-value">{{ '%.0f'|format(dm.avg_volume_per_trade or 0) }}</div>-->
+<!--      <div class="metric-subtext">Contract volume</div>-->
+<!--    </div>-->
       <div class="metric-card">
         <div class="metric-label">Consecutive Wins</div>
         <div class="metric-value text-success">{{ dm.consecutive_wins or 0 }}</div>
@@ -218,11 +218,11 @@
                   <div class="metric-value text-danger">{{ '%.1f'|format(dm.low_score_loss_rate or 0) }}%</div>
                   <div class="metric-subtext">When score < 50</div>
                 </div>
-                <div class="metric-card">
-                  <div class="metric-label">Score Alignment Effectiveness</div>
-                  <div class="metric-value">{{ '%.2f'|format(dm.score_alignment_effectiveness or 0) }}</div>
-                  <div class="metric-subtext">Score-profit correlation</div>
-                </div>
+<!--                <div class="metric-card">-->
+<!--                  <div class="metric-label">Score Alignment Effectiveness</div>-->
+<!--                  <div class="metric-value">{{ '%.2f'|format(dm.score_alignment_effectiveness or 0) }}</div>-->
+<!--                  <div class="metric-subtext">Score-profit correlation</div>-->
+<!--                </div>-->
                 <div class="metric-card">
                   <div class="metric-label">52W High Hit Rate</div>
                   <div class="metric-value">{{ '%.1f'|format(dm.hit_rate_52w_high or 0) }}%</div>
@@ -243,48 +243,44 @@
   </div>
 
   <!-- Market Behavior Metrics -->
-  <div class="card p-4 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-graph-down text-info"></i> Market Behavior</h5>
-    <div class="stat-grid">
-      <div class="metric-card">
-        <div class="metric-label">Avg Daily Range</div>
-        <div class="metric-value">₹{{ '%.2f'|format(dm.avg_daily_range or 0) }}</div>
-        <div class="metric-subtext">Price movement</div>
-      </div>
+<!--  <div class="card p-4 mb-4">-->
+<!--    <h5 class="fw-bold mb-3"><i class="bi bi-graph-down text-info"></i> Market Behavior</h5>-->
+<!--    <div class="stat-grid">-->
 
-      <div class="metric-card">
-        <div class="metric-label">Close to Open Return</div>
-        <div class="metric-value {{ 'text-success' if (dm.avg_close_to_open_return or 0)>0 else 'text-danger' }}">
-          {{ '%.2f'|format(dm.avg_close_to_open_return or 0) }}%
-        </div>
-        <div class="metric-subtext">Overnight change</div>
-      </div>
 
-      <div class="metric-card">
-        <div class="metric-label">Volatility Index</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.volatility_index or 0) }}</div>
-        <div class="metric-subtext">Market volatility</div>
-      </div>
+<!--      <div class="metric-card">-->
+<!--        <div class="metric-label">Close to Open Return</div>-->
+<!--        <div class="metric-value {{ 'text-success' if (dm.avg_close_to_open_return or 0)>0 else 'text-danger' }}">-->
+<!--          {{ '%.2f'|format(dm.avg_close_to_open_return or 0) }}%-->
+<!--        </div>-->
+<!--        <div class="metric-subtext">Overnight change</div>-->
+<!--      </div>-->
 
-      <div class="metric-card">
-        <div class="metric-label">Volume Volatility</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.volume_volatility or 0) }}</div>
-        <div class="metric-subtext">Volume fluctuation</div>
-      </div>
+<!--      <div class="metric-card">-->
+<!--        <div class="metric-label">Volatility Index</div>-->
+<!--        <div class="metric-value">{{ '%.2f'|format(dm.volatility_index or 0) }}</div>-->
+<!--        <div class="metric-subtext">Market volatility</div>-->
+<!--      </div>-->
 
-      <div class="metric-card">
-        <div class="metric-label">Trade Timing Bias</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.trade_timing_bias or 0) }}</div>
-        <div class="metric-subtext">Entry timing quality</div>
-      </div>
+<!--      <div class="metric-card">-->
+<!--        <div class="metric-label">Volume Volatility</div>-->
+<!--        <div class="metric-value">{{ '%.2f'|format(dm.volume_volatility or 0) }}</div>-->
+<!--        <div class="metric-subtext">Volume fluctuation</div>-->
+<!--      </div>-->
 
-      <div class="metric-card">
-        <div class="metric-label">Volume Following</div>
-        <div class="metric-value">{{ '%.2f'|format(dm.volume_following_behavior or 0) }}</div>
-        <div class="metric-subtext">Volume trend alignment</div>
-      </div>
-    </div>
-  </div>
+<!--      <div class="metric-card">-->
+<!--        <div class="metric-label">Trade Timing Bias</div>-->
+<!--        <div class="metric-value">{{ '%.2f'|format(dm.trade_timing_bias or 0) }}</div>-->
+<!--        <div class="metric-subtext">Entry timing quality</div>-->
+<!--      </div>-->
+
+<!--      <div class="metric-card">-->
+<!--        <div class="metric-label">Volume Following</div>-->
+<!--        <div class="metric-value">{{ '%.2f'|format(dm.volume_following_behavior or 0) }}</div>-->
+<!--        <div class="metric-subtext">Volume trend alignment</div>-->
+<!--      </div>-->
+<!--    </div>-->
+<!--  </div>-->
 
   <!-- Reward/Risk Balance -->
   <div class="card p-4 mb-4">

@@ -31,4 +31,102 @@
 
 .btn {
     border-radius: 0.5rem;
+}/* Outer container — enable smooth horizontal scrolling */
+
+/* GRID container */
+.recommendation-slider {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    width: 100%;
+    padding: 10px 0;
+}
+
+/* Cards */
+.rec-card {
+    background: #ffffff;
+    border-radius: 1rem;
+    padding: 1.2rem 1.4rem;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+    transition: 0.2s ease;
+    max-width: 350px;
+    margin: 0 auto;
+}
+
+.rec-card:hover {
+    transform: translateY(-8px) scale(1.03);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+    .recommendation-slider {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .recommendation-slider {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+
+/* =============================
+   BUCKET CARD VISUAL UPGRADE
+============================= */
+
+.bucket-card {
+  border-radius: 1rem;
+  padding: 1.2rem 1.4rem;
+  background: #ffffff;
+  box-shadow: 0 3px 14px rgba(0,0,0,0.06);
+  transition: 0.25s ease;
+}
+
+.bucket-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+/* Color heat mapping */
+.bucket-neg  { border-left: 6px solid #dc3545; }   /* red */
+.bucket-low  { border-left: 6px solid #ffc107; }   /* yellow */
+.bucket-mid  { border-left: 6px solid #0d6efd; }   /* blue */
+.bucket-high { border-left: 6px solid #198754; }   /* green */
+
+.bucket-badge {
+  background: #0d6efd;
+  color: white;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+.bucket-meta .label {
+  font-weight: 600;
+  color: #444;
+}
+
+.bucket-list-item {
+  background: #fafafa !important;
+  border-radius: 0.3rem;
+  margin-bottom: 4px;
+}
+
+.bucket-list-item .symbol {
+  font-weight: 600;
+  color: #333;
+}
+
+.journey-table thead {
+  background: #f0f4ff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.journey-table td, .journey-table th {
+  font-size: 0.78rem;
 }

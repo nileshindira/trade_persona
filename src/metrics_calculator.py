@@ -42,6 +42,7 @@ class TradingMetricsCalculator:
         self.trading_days = config['metrics']['trading_days_per_year']
         self.logger = logging.getLogger(__name__)
 
+
     def classify_instrument(self,symbol: str):
         s = str(symbol).upper().strip().replace(",", "")
         parts = s.split()
@@ -105,7 +106,7 @@ class TradingMetricsCalculator:
     # =========================================================
     # Public Entry
     # =========================================================
-    def calculate_all_metrics(self, df: pd.DataFrame) -> Dict:
+    def calculate_all_metrics(self, df: pd.DataFrame, pnl_csv :str) -> Dict:
         """Calculate all trading metrics and persona traits with extended analytics."""
         df = df.copy()
 
@@ -148,7 +149,7 @@ class TradingMetricsCalculator:
             'avg_trades_per_day': self.calculate_avg_trades_per_day(df),
             'date_range': self.get_date_range(df),
             'trading_days': self.get_trading_days(df),
-            'pnl_timeline': self._build_pnl_timeline(df),
+            'pnl_timeline': self._build_pnl_timeline(pnl_csv),
         }
 
         # -------- Extended position & MTM analytics --------
@@ -199,10 +200,10 @@ class TradingMetricsCalculator:
             metrics["hit_rate_alltime_high"] = df["is_alltime_high"].mean() * 100
 
         # PnL Shape / Distribution
-        metrics["pnl_volatility"] = df["pnl"].std()
-        metrics["pnl_skewness"] = df["pnl"].skew()
-        metrics["pnl_kurtosis"] = df["pnl"].kurt()
-        metrics["value_at_risk_95"] = df["pnl"].quantile(0.05)
+        metrics["pnl_volatility"] = self.pnl_df["MTM"].std()
+        metrics["pnl_skewness"] = self.pnl_df["MTM"].skew()
+        metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
+        metrics["value_at_risk_95"] = self.pnl_df["MTM"].quantile(0.05)
 
         # Position / Holding behavior
         if "holding_period" in df.columns:
@@ -212,21 +213,30 @@ class TradingMetricsCalculator:
             metrics["avg_holding_period_losers"] = df.loc[df["pnl"] <= 0, "holding_period"].mean()
 
         # Risk / Efficiency
-        metrics["return_on_capital"] = df["pnl"].sum() / df["trade_value"].sum() if "trade_value" in df.columns and df["trade_value"].sum() != 0 else 0
-        metrics["efficiency_ratio"] = df["pnl"].sum() / df["pnl"].abs().sum() if df["pnl"].abs().sum() != 0 else 0
+        metrics["return_on_capital"] = self.cumulative_pnl / df["trade_value"].sum() if "trade_value" in df.columns and df["trade_value"].sum() != 0 else 0
+        metrics["efficiency_ratio"] = self.cumulative_pnl / df["pnl"].abs().sum() if df["pnl"].abs().sum() != 0 else 0
         metrics["r_multiple_avg"] = (df["pnl"] / df["trade_value"]).mean() if "trade_value" in df.columns else 0
         metrics["downside_deviation"] = df.loc[df["pnl"] < 0, "pnl"].std()
 
         # Behavioral Insights
         if "trade_hour" in df.columns:
-            metrics["trade_timing_bias"] = df["trade_hour"].corr(df["pnl"])
+            th = pd.to_numeric(df["trade_hour"], errors="coerce")
+            pnl = pd.to_numeric(df["pnl"], errors="coerce")
+
+            # Filter valid rows
+            mask = th.notna() & pnl.notna()
+
+            if mask.sum() >= 2 and th[mask].nunique() > 1:
+                metrics["trade_timing_bias"] = th[mask].corr(pnl[mask])
+            else:
+                metrics["trade_timing_bias"] = 0.0
         if "volume" in df.columns and "trade_value" in df.columns:
             metrics["volume_following_behavior"] = df["volume"].corr(df["trade_value"])
         if "total_score" in df.columns:
             metrics["score_alignment_effectiveness"] = df["total_score"].corr(df["pnl"])
         if "pnl" in df.columns:
-            avg_win = df.loc[df["pnl"] > 0, "pnl"].mean()
-            avg_loss = df.loc[df["pnl"] < 0, "pnl"].mean()
+            avg_win = self.pnl_df.loc[self.pnl_df["MTM"] > 0, "MTM"].mean()
+            avg_loss = self.pnl_df.loc[self.pnl_df["MTM"] < 0, "MTM"].mean()
             metrics["reward_to_risk_balance"] = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
             # ================================
             # NEW – Instrument Cluster Metrics (symbol → category)
@@ -404,6 +414,7 @@ class TradingMetricsCalculator:
 
     def get_trading_days(self, df: pd.DataFrame) -> int:
         return int(df['trade_date'].dt.date.nunique())
+
 
     # =========================================================
     # Extended: Positions/MTM snapshot
@@ -683,11 +694,11 @@ class TradingMetricsCalculator:
         # =========================
         total_realized = float(realized_by_symbol.sum())
         total_unrealized = float(sym_open["unrealized"].sum())
-        total_pnl_combined = total_realized + total_unrealized
+        total_pnl_combined = self.cumulative_pnl
         total_investment_value = float(sym_open["invested_value"].sum())
 
         # Day MTM = realized pnl on latest trading date in file
-        day_mtm_realized = float(df.loc[df["trade_date"].dt.date == latest_date, "pnl"].sum())
+        day_mtm_realized = self.last_pnl
 
         open_sym_count = int(sym_open.shape[0])
         avg_realized_per_stock = total_realized / realized_by_symbol.index.nunique() if realized_by_symbol.index.nunique() > 0 else 0.0
@@ -769,7 +780,7 @@ class TradingMetricsCalculator:
                 "symbol": symbol,
                 "buy_rate": float(r["buy_price"]),
                 "sell_rate": float(r["sell_price"]),
-                "qty": int(net_qty),
+                "qty": int(max(r["buy_qty"], r["sell_qty"])),
                 "value": float(value),
                 "pnl": float(pnl),
                 "days": 0,  # TODO: derive from pair_trades if needed
@@ -826,13 +837,20 @@ class TradingMetricsCalculator:
             }
         return out
 
-    def _build_pnl_timeline(self, df: pd.DataFrame) -> Dict[str, List]:
-        """Cumulative P&L timeline for chart (unchanged behavior, daily granularity)."""
-        df_sorted = df.sort_values('trade_date')
-        daily = df_sorted.groupby(df_sorted['trade_date'].dt.date)['pnl'].sum()
-        cum = daily.cumsum()
-        return {'dates': [str(d) for d in cum.index], 'values': [float(v) for v in cum.values]}
-
+    def _build_pnl_timeline(self, csv_path: str) -> Dict[str, List]:
+        df = pd.read_csv(csv_path)
+        self.pnl_df = df
+        df = df.rename(columns={'Date': 'trade_date', 'MTM': 'pnl'})
+        df['trade_date'] = pd.to_datetime(df['trade_date'])
+        df = df.sort_values('trade_date')
+        daily = df.groupby(df['trade_date'].dt.date)['pnl'].sum()
+        cumulative = daily.cumsum()
+        self.last_pnl = df["pnl"].iloc[-1]
+        self.cumulative_pnl = float(cumulative.iloc[-1]) if len(cumulative) else 0.0
+        return {
+            'dates': [str(d) for d in cumulative.index],
+            'values': [float(v) for v in cumulative.values]
+        }
     # =========================================================
     # Persona Trait Analysis (unchanged)
     # =========================================================

@@ -134,7 +134,7 @@ class ReportGenerator:
 
         # Convert markdown → HTML
         analysis_html = {
-            k: markdown.markdown(v, extensions=["tables", "nl2br"])
+            k: markdown.markdown(v,extensions=["extra", "tables", "nl2br"])
             for k, v in analysis_text.items()
             if isinstance(v, str)
         }
@@ -231,8 +231,9 @@ def export_html_from_json(json_path, html_path, base_dir=None):
 
 
 
+
 if __name__ == "__main__":
-    with open("D:\\PycharmProjects\\trade_persona\data\\reports\\Trader_report.json", "r", encoding="utf-8") as f:
+    with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     gen = ReportGenerator()
-    gen.export_html(data, "D:\\PycharmProjects\\trade_persona\data\\reports\\Trader_report.html", theme="light")
+    gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")

@@ -1,13 +1,11 @@
-          <!-- RECOMMENDATIONS LIST -->
-          {% if report.recommendations %}
-          <section>
-            <h2 class="section-title">💡 Action Items</h2>
-            <div class="card p-4">
-              <ol>
-                {% for rec in report.recommendations %}
-                <li class="mb-2">{{ rec }}</li>
-                {% endfor %}
-              </ol>
-            </div>
-          </section>
-          {% endif %}
+<section>
+  <h2 class="section-title">💡 Action Items</h2>
+
+  <div class="recommendation-slider">
+      {% for rec in report.recommendations %}
+      <div class="rec-card">
+        <p>{{ rec }}</p>
+      </div>
+      {% endfor %}
+  </div>
+</section>
