@@ -215,8 +215,8 @@ class ReportGenerator:
             "web_data": web,
             "risk_score": self._risk_score(metrics, patterns),
             "detected_patterns": patterns,
-            "ai_analysis": analysis_html,
-            "recommendations": self._format_recommendations(analysis_text.get("recommendations", "")),
+            "ai_analysis": analysis_text,
+            "recommendations": analysis_text.get("recommendations", ""),
             "all_kpis": web.get("kpis", {}),
             "persona_scores": web.get("persona_scores", {}),
             "charts_data": web.get("charts", {}),
@@ -295,7 +295,11 @@ def export_html_from_json(json_path, html_path, base_dir=None):
 
 
 if __name__ == "__main__":
-    with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
+    with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r",
+              encoding="utf-8") as f:
+        # with open("../../trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     gen = ReportGenerator()
-    gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")
+    # gen.export_html(data, "../../trade_persona/data/reports/Trader_report.html", theme="light")
+    gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html",
+                    theme="light")

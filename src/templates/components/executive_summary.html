@@ -5,7 +5,7 @@
               <div class="stat-grid">
                 <div class="metric-card">
                   <div class="metric-label">Total Trades</div>
-                  <div class="metric-value">{{ report.executive_summary.total_trades or 0 }}</div>
+                  <div class="metric-value">{{ report.detailed_metrics.total_trades or 0 }}</div>
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Net P&L</div>
@@ -15,19 +15,19 @@
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Win Rate</div>
-                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.win_rate or 0) }}%</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.detailed_metrics.win_rate or 0) }}%</div>
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Sharpe Ratio</div>
-                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.sharpe_ratio or 0) }}</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.detailed_metrics.sharpe_ratio or 0) }}</div>
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Profit Factor</div>
-                  <div class="metric-value">{{ '%.2f'|format(report.executive_summary.profit_factor or 0) }}</div>
+                  <div class="metric-value">{{ '%.2f'|format(report.detailed_metrics.profit_factor or 0) }}</div>
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Max Drawdown</div>
-                  <div class="metric-value text-danger">{{ '%.2f'|format(report.executive_summary.max_drawdown_pct or 0) }}%</div>
+                  <div class="metric-value text-danger">{{ '%.2f'|format(report.detailed_metrics.max_drawdown_pct or 0) }}%</div>
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Risk Level</div>
@@ -39,7 +39,7 @@
                 </div>
                 <div class="metric-card">
                   <div class="metric-label">Open Positions</div>
-                  <div class="metric-value">{{ report.executive_summary.open_positions_count or 0 }}</div>
+                  <div class="metric-value">{{ report.detailed_metrics.open_positions_count or 0 }}</div>
                 </div>
               </div>
             </div>

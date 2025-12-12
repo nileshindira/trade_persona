@@ -466,60 +466,60 @@ class TradingDataProcessor:
         )
         return daily_stats
 
-    def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Classify each symbol into OPEN / CLOSED positions
-        and each trade row into OPEN-LEG or CLOSED-LEG.
-
-        Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
-        """
-        df = df.copy()
-        df["transaction_type"] = df["transaction_type"].str.upper()
-
-        # ----- Compute net qty at SYMBOL level -----
-        df["_signed_qty"] = df.apply(
-            lambda r: r["quantity"] if r["transaction_type"] == "BUY"
-            else -r["quantity"],
-            axis=1
-        )
-
-        symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
-
-        # merge net qty into df
-        df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
-
-        # ----- Position status -----
-        df["position_status"] = df["symbol_net_qty"].apply(
-            lambda q: "OPEN" if q != 0 else "CLOSED"
-        )
-
-        # ----- Long / Short / Mixed classification -----
-        # long if buys > sells, short if sells > buys
-
-        def classify_direction(g):
-            buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
-            sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
-
-            if buy_qty > sell_qty:
-                return "LONG"
-            elif sell_qty > buy_qty:
-                return "SHORT"
-            else:
-                return "MIXED"  # equal qty or hedged structure
-
-        direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
-        df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
-
-        # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
-        df["row_trade_category"] = df.apply(
-            lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
-            axis=1
-        )
-
-        # cleanup
-        df.drop(columns=["_signed_qty"], inplace=True)
-
-        return df
+    # def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
+    #     """
+    #     Classify each symbol into OPEN / CLOSED positions
+    #     and each trade row into OPEN-LEG or CLOSED-LEG.
+    #
+    #     Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
+    #     """
+    #     df = df.copy()
+    #     df["transaction_type"] = df["transaction_type"].str.upper()
+    #
+    #     # ----- Compute net qty at SYMBOL level -----
+    #     df["_signed_qty"] = df.apply(
+    #         lambda r: r["quantity"] if r["transaction_type"] == "BUY"
+    #         else -r["quantity"],
+    #         axis=1
+    #     )
+    #
+    #     symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
+    #
+    #     # merge net qty into df
+    #     df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+    #
+    #     # ----- Position status -----
+    #     df["position_status"] = df["symbol_net_qty"].apply(
+    #         lambda q: "OPEN" if q != 0 else "CLOSED"
+    #     )
+    #
+    #     # ----- Long / Short / Mixed classification -----
+    #     # long if buys > sells, short if sells > buys
+    #
+    #     def classify_direction(g):
+    #         buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
+    #         sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
+    #
+    #         if buy_qty > sell_qty:
+    #             return "LONG"
+    #         elif sell_qty > buy_qty:
+    #             return "SHORT"
+    #         else:
+    #             return "MIXED"  # equal qty or hedged structure
+    #
+    #     direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
+    #     df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
+    #
+    #     # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
+    #     df["row_trade_category"] = df.apply(
+    #         lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
+    #         axis=1
+    #     )
+    #
+    #     # cleanup
+    #     df.drop(columns=["_signed_qty"], inplace=True)
+    #
+    #     return df
 
     def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
         """

@@ -1,9 +1,9 @@
           <!-- ===== AI INSIGHTS ===== -->
-          {% if report.ai_analysis %}
+          {% if report.summary_data %}
           <section id="ai_insights" class="page-section mt-4">
             <h4 class="section-title"><i class="bi bi-robot"></i> AI-Generated Insights</h4>
             <div class="accordion" id="aiAcc">
-              {% for k,v in report.ai_analysis.items() %}
+              {% for k,v in report.summary_data.items() %}
               <div class="accordion-item mb-3 border-0">
                 <h2 class="accordion-header">
                   <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold"

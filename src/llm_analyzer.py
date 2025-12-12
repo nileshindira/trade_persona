@@ -9,7 +9,8 @@ from typing import Dict, List
 import logging
 import re
 import pandas as pd
-import numpy as np
+import markdown
+
 class OllamaAnalyzer:
     """LLM-based analysis using Ollama"""
 
@@ -81,9 +82,9 @@ class OllamaAnalyzer:
         # Format as list of {'name': 'Instrument', 'value': 12.3}
         inst_cluster = patterns.get('instrument_clustering', {})
         chart_data['instrument_distribution'] = metrics.get("chart_data")["asset_clusters"]
-        chart_data['segment_distribution']=metrics.get("symbol_cluster")
+        chart_data['segment_distribution'] = metrics.get("symbol_cluster")
         chart_data['symbol_distribution_raw'] = metrics["symbol_cluster"]
-            # Add other instruments as needed
+        # Add other instruments as needed
 
         # Win/Loss Distribution (For simple bar chart)
         chart_data['win_loss_amounts'] = {
@@ -101,8 +102,7 @@ class OllamaAnalyzer:
         BEAUTIFULLY STYLED HTML COMPONENTS for your UI.
         """
 
-        import markdown
-        import re
+
 
         # Convert markdown → basic HTML first
         html = markdown.markdown(md_text, extensions=["extra", "tables"])
@@ -136,45 +136,26 @@ class OllamaAnalyzer:
 
         return html
 
-
-    # =========================================================
-    # Main Integration Function
-    # =========================================================
     def generate_analysis(self, metrics: Dict, patterns: Dict, df: pd.DataFrame) -> Dict:
-        """Generate comprehensive analysis using LLM"""
-
-        # Prepare context (NOW includes DataFrame)
         context = self._prepare_context(metrics, patterns, df)
+        prompt = self._build_unified_prompt(context)
 
-        self.logger.info("1. Generate text analysis from LLM")
-        analysis_text = {
-            'trader_profile': self._analyze_trader_profile(context),
-            'risk_assessment': self._analyze_risk(context),
-            'behavioral_insights': self._analyze_behavior(context),
-            'recommendations': self._generate_recommendations(context),
-            'performance_summary': self._summarize_performance(context),
-        }
+        llm_json = self._call_ollama(prompt)
+        llm_output = self._safe_json_load(llm_json)  # <-- FIXED HERE
 
-        self.logger.info("2. Extract structured LLM summary")
-        structured_summary = self._extract_structured_summary(analysis_text, metrics, patterns)
-
-        self.logger.info("3. NEW: Prepare dedicated data structures for the Web Page UI")
         web_kpis = self._prepare_dashboard_kpis(metrics, patterns)
-        web_charts = self._prepare_chart_data(metrics,patterns, df)
+        web_charts = self._prepare_chart_data(metrics, patterns, df)
 
-
-        self.logger.info("Final Output for API/Web Service")
-        analysis = {
-            "analysis_text": analysis_text,        # LLM generated text blocks (for display)
-            "summary_data": structured_summary,   # Extracted LLM verdict/score (for dashboard)
-            "web_data": {                         # **NEW BLOCK: Clean, structured data for the UI**
-                "kpis": web_kpis,                 # Key single-value metrics (Section 1 & 2)
-                "charts": web_charts,             # Arrays for charts (Section 3)
-                "persona_scores": metrics.get("persona_traits", {}), # (Section 4)
-                "raw_patterns": patterns          # Full pattern detail
+        return {
+            "analysis_text": llm_output,
+            "summary_data": llm_output,
+            "web_data": {
+                "kpis": web_kpis,
+                "charts": web_charts,
+                "persona_scores": metrics.get("persona_traits", {}),
+                "raw_patterns": patterns
             }
         }
-        return analysis
 
     # =========================================================
     # Context Preparation
@@ -300,136 +281,123 @@ class OllamaAnalyzer:
 
         return trades_context
 
-    # =========================================================
-    # Ollama API Interaction
-    # =========================================================
-    def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
-        """Call Ollama API"""
+    def _safe_json_load(self, text: str) -> dict:
+        """Safe JSON loader that prevents LLM noise from breaking code."""
         try:
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "system": system_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": self.config['ollama']['temperature'],
-                        "top_p": self.config['ollama']['top_p']
-                    }
-                },
-                timeout=120
-            )
+            return json.loads(text)
+        except Exception:
+            # Attempt to extract JSON substring
+            match = re.search(r"\{.*\}", text, re.S)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except Exception:
+                    pass
 
-            if response.status_code == 200:
-                return response.json().get('response', '')
+            self.logger.error("Unable to decode JSON from LLM output")
+            return {}
+
+    def _call_ollama(self, prompt: str) -> str:
+        """
+        FIXED:
+        - Forces non-streaming output
+        - Forces Ollama to return ONE final JSON blob
+        - Strips noise before JSON extraction
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False  # <-- FIXED: Prevent token streaming
+        }
+
+        try:
+            res = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=300
+            )
+            res.raise_for_status()
+
+            raw = res.json().get("response", "")
+
+            # CLEAN unwanted markdown, text, spacing before JSON
+            raw = raw.strip()
+
+            # remove backticks ```
+            raw = raw.replace("```json", "").replace("```", "")
+
+            # Find JSON block even if model talks
+            json_match = re.search(r"\{.*\}$", raw, re.S)
+            if json_match:
+                cleaned = json_match.group(0)
             else:
-                self.logger.error(f"Ollama API error: {response.text}")
-                return "Error generating analysis"
+                cleaned = raw
+
+            return cleaned
 
         except Exception as e:
-            self.logger.error(f"Error calling Ollama: {str(e)}")
-            return "Error generating analysis - Ollama may not be running"
+            self.logger.error(f"Ollama call failed: {e}")
+            return "{}"
 
-    # =========================================================
-    # Analysis Sections
-    # =========================================================
-    def _analyze_trader_profile(self, context: str) -> str:
-        """Analyze trader profile"""
-        prompt = f"""
-Based on the following trading data, provide a detailed trader profile classification.
-Include:
-1. Trader type (scalper, day trader, swing trader, etc.)
-2. Risk appetite (conservative, moderate, aggressive)
-3. Trading style characteristics
-4. How the persona traits reflect in actual trade behavior
-Ensure to keep response in simple interactive english for layman trader in india. 
+    def _build_unified_prompt(self, context: str) -> str:
+        return f"""
+    You are an expert trading psychologist, quant analyst, and portfolio risk evaluator.
 
-{context}
+    Below is the FULL trading dataset and computed metrics.  
+    Analyze everything deeply and return **ONLY a valid JSON object** in the structure shown.
 
-Provide a concise but comprehensive trader profile (200-300 words):
-"""
-        system_prompt = "You are an expert financial analyst specializing in trading behavior analysis."
-        self.logger.info("1.1 Generate _analyze_trader_profile from LLM")
-        raw = self._call_ollama(prompt, system_prompt)
-        return self._beautify_recommendations_html(raw)
+    =====================================================================
+    CONTEXT (metrics + patterns + persona + trades)
+    =====================================================================
+    {context}
 
-    def _analyze_risk(self, context: str) -> str:
-        """Analyze risk profile"""
-        prompt = f"""
-Based on the following trading metrics and persona traits, provide a risk assessment.
+    =====================================================================
+    STRICT OUTPUT FORMAT (MANDATORY)
+    =====================================================================
+    Return ONLY a JSON object with this exact structure:
 
-{context}
+    {{
+      "trader_profile": {{
+          "style": "...",
+          "strengths": ["...", "..."],
+          "weaknesses": ["...", "..."],
+          "persona_summary": "..."
+      }},
+      "risk_assessment": {{
+          "risk_level": "Low | Medium | High",
+          "key_risks": ["...", "..."],
+          "max_drawdown_comment": "...",
+          "position_sizing_comment": "..."
+      }},
+      "behavioral_insights": {{
+          "biases_detected": ["...", "..."],
+          "emotional_patterns": ["...", "..."],
+          "discipline_score_comment": "...",
+          "psychology_summary": "..."
+      }},
+      "recommendations": {{
+          "top_improvements": ["...", "...", "..."],
+          "risk_controls": ["...", "..."],
+          "trading_rules": ["...", "..."],
+          "habit_changes": ["...", "..."]
+      }},
+      "performance_summary": {{
+          "pnl_quality": "...",
+          "score_interpretation": "...",
+          "overall_verdict": "..."
+      }}
+    }}
 
-Analyze:
-1. Overall risk level (LOW/MEDIUM/HIGH/VERY HIGH)
-2. Key risk factors
-3. Risk-adjusted performance
-4. Potential vulnerabilities based on persona behavior
-Ensure to keep response in simple interactive english for layman trader in india
-Provide detailed risk analysis (200-300 words):
-"""
-        system_prompt = "You are a risk management expert analyzing trading portfolios."
-        self.logger.info("1.2 Generate _analyze_risk from LLM")
-        return self._call_ollama(prompt, system_prompt)
-
-    def _analyze_behavior(self, context: str) -> str:
-        """Analyze behavioral patterns"""
-        prompt = f"""
-Based on the detected patterns and persona traits, provide behavioral insights.
-
-{context}
-
-Focus on:
-1. Psychological tendencies
-2. Emotional trading signs
-3. Discipline issues
-4. Positive behaviors and consistency traits
-Ensure to keep response in simple interactive english for layman trader in india
-Provide behavioral analysis (200-300 words):
-"""
-        system_prompt = "You are a trading psychology expert analyzing trader behavior."
-        self.logger.info("1.3 Generate _analyze_behavior from LLM")
-        return self._call_ollama(prompt, system_prompt)
-
-    def _generate_recommendations(self, context: str) -> str:
-        """Generate actionable recommendations"""
-        prompt = f"""
-Based on the trading metrics, patterns, and persona traits, provide specific, actionable recommendations.
-
-{context}
-
-Provide:
-1. Immediate actions (next 1-2 weeks)
-2. Short-term improvements (1-3 months)
-3. Long-term strategy changes
-4. Specific metrics or traits to improve
-Ensure to keep response in simple interactive english for layman trader in india
-Format as bullet points with clear action items:
-"""
-        system_prompt = "You are a professional trading coach providing improvement strategies."
-        self.logger.info("1.4 Generate _generate_recommendations from LLM")
-        return self._call_ollama(prompt, system_prompt)
-
-    def _summarize_performance(self, context: str) -> str:
-        """Summarize overall performance"""
-        prompt = f"""
-Provide an executive summary of the trading performance.
-
-{context}
-
-Include:
-1. Overall verdict (Excellent/Good/Average/Poor/Critical)
-2. Key strengths
-3. Major weaknesses
-4. Bottom-line assessment integrating persona analysis
-Ensure to keep response in simple interactive english for layman trader in india
-Be direct and honest in assessment (150-200 words):
-"""
-        system_prompt = "You are a senior financial advisor providing performance reviews."
-        self.logger.info("1.5 Generate _summarize_performance from LLM")
-
-        return self._call_ollama(prompt, system_prompt)
+    =====================================================================
+    RULES:
+    - The JSON must be syntactically perfect.
+    - No markdown.
+    - No explanation.
+    - No extra keys.
+    - No commentary outside the JSON.
+    - Keep text concise and factual, based on CONTEXT.
+    =====================================================================
+    """
 
     # =========================================================
     # NEW: Structured Summary Extraction
