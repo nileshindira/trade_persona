@@ -142,9 +142,14 @@ class OllamaAnalyzer:
     # =========================================================
     def generate_analysis(self, metrics: Dict, patterns: Dict, df: pd.DataFrame) -> Dict:
         """Generate comprehensive analysis using LLM"""
+        df_small = df[['symbol', 'trade_date','transaction_type','quantity',
+                       'price','trade_value','t_score', 'f_score', 'total_score',
+                       'is_52week_high', 'is_52week_low', 'is_alltime_high',
+                        'is_alltime_low', 'is_event', 'atr', 'is_high_volume',
+                        'market_behaviour', 'chart_charts']].copy()
 
         # Prepare context (NOW includes DataFrame)
-        context = self._prepare_context(metrics, patterns, df)
+        context = self._prepare_context(metrics, patterns, df_small)
 
         self.logger.info("1. Generate text analysis from LLM")
         analysis_text = {

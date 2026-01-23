@@ -36,7 +36,9 @@ class TradingDataProcessor:
             query = f"""
                 SELECT symbol, date, open, high, low, close, volume,
                        t_score, f_score, total_score,
-                       is_52week_high, is_52week_low, is_alltime_high, is_alltime_low
+                       is_52week_high, is_52week_low, is_alltime_high,
+                        is_alltime_low, is_event, atr, is_high_volume,
+                        market_behaviour, chart_charts
                 FROM {table_name};
             """
             db_df = pd.read_sql(query, conn)
