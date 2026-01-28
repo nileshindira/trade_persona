@@ -266,6 +266,9 @@ class TradingMetricsCalculator:
             metrics["holding_period_volatility"] = df["holding_period"].std()
             metrics["avg_holding_period_winners"] = df.loc[df["pnl"] > 0, "holding_period"].mean()
             metrics["avg_holding_period_losers"] = df.loc[df["pnl"] <= 0, "holding_period"].mean()
+        
+        # --- 🧩 NEW: Holding Analytics Segments ---
+        metrics["trade_analytics"] = self._calculate_holding_analytics(df)
 
         # Risk / Efficiency
         metrics["return_on_capital"] = self.cumulative_pnl / df["trade_value"].sum() if "trade_value" in df.columns and df["trade_value"].sum() != 0 else 0
@@ -483,6 +486,68 @@ class TradingMetricsCalculator:
     # =========================================================
     # Extended: Positions/MTM snapshot
     # =========================================================
+
+    def _calculate_holding_analytics(self, df: pd.DataFrame) -> Dict:
+        """
+        Segment trades by holding period using 'holding_period_minutes' if available.
+        Buckets:
+          - Scalp: < 30 mins
+          - Intraday: 30 mins to < 1 day (1440 mins)
+          - Swing: 1 day to 7 days
+          - Position: > 7 days
+        """
+        # Default structure
+        segments = {
+            "Scalp (<30m)": {"min": 0, "max": 30},
+            "Intraday (30m-1d)": {"min": 30, "max": 1440},
+            "Swing (1d-7d)": {"min": 1440, "max": 10080},
+            "Position (>7d)": {"min": 10080, "max": float('inf')},
+        }
+
+        results = {}
+
+        # 1. Check if column exists
+        col = "holding_period_minutes"
+        if col not in df.columns:
+            # Try to calculate if missing but we have dates
+            if "entry_time" in df.columns and "exit_time" in df.columns:
+                try:
+                    df[col] = (pd.to_datetime(df["exit_time"]) - pd.to_datetime(df["entry_time"])).dt.total_seconds() / 60
+                except:
+                    pass
+
+        if col not in df.columns:
+             for name in segments:
+                results[name] = {
+                    "trade_count": 0,
+                    "win_rate": 0.0,
+                    "avg_pnl": 0.0,
+                    "total_pnl": 0.0
+                }
+             return {"holding_period_segments": results}
+
+        # 2. Iterate buckets
+        for name, limits in segments.items():
+            mask = (df[col] >= limits["min"]) & (df[col] < limits["max"])
+            subset = df[mask]
+            
+            count = len(subset)
+            total_pnl = subset["pnl"].sum() if count > 0 else 0.0
+            avg_pnl = total_pnl / count if count > 0 else 0.0
+            
+            # Win rate
+            wins = len(subset[subset["pnl"] > 0])
+            win_rate = (wins / count * 100) if count > 0 else 0.0
+
+            results[name] = {
+                "trade_count": count,
+                "win_rate": float(win_rate),
+                "avg_pnl": float(avg_pnl),
+                "total_pnl": float(total_pnl)
+            }
+
+        return {"holding_period_segments": results}
+
     def _compute_positions_snapshot(self, df: pd.DataFrame) -> Dict:
         """
         Build symbol-level open/closed positions from already-classified df:

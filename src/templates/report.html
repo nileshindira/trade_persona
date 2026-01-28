@@ -183,40 +183,47 @@
 
   <!-- SECTION 1: OVERVIEW & HEALTH -->
   <section id="overview" class="page-section">
-    <h3 class="section-title"><i class="bi bi-activity"></i> Executive Summary</h3>
+
     {% include "components/executive_summary.html" %}
 
-    <div class="mt-4">
+    <div class="mt-4" id="persona_scores">
       <h5 class="mb-3 text-secondary">Persona & Risk Profile</h5>
       <div class="row g-4">
         <!-- Persona Chart -->
         <div class="col-md-5">
           <div class="card h-100 border-0 shadow-none bg-light pt-3">
             <canvas id="personaRadarChart" style="max-height: 300px;"></canvas>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Trait</th>
+                  <th>Score</th>
+                  <th>Visual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for trait, score in report.web_data.persona_scores.items() %}
+                <tr>
+                  <td><strong>{{ trait.replace('_', ' ').title() }}</strong></td>
+                  <td>{{ '%.2f'|format(score * 100) }}%</td>
+                  <td>
+                    <div class="progress" style="height:20px">
+                      <div class="progress-bar"
+                        style="width:{{ score * 100 }}%;background:linear-gradient(90deg,var(--primary),var(--accent))">
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
         </div>
+
+
         <!-- Key Strengths/Weaknesses from AI -->
         <div class="col-md-7">
-          <div class="row">
-            <div class="col-6">
-              <div class="card bg-success-subtle border-0">
-                <div class="card-body">
-                  <h6 class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Top Strengths</h6>
-                  <p class="small mb-0">{{ report.summary_data.strengths | default("Not analyzed") | replace("- ",
-                    "<br>• ") | safe }}</p>
-                </div>
-              </div>
-            </div>
-            <div class="col-6">
-              <div class="card bg-danger-subtle border-0">
-                <div class="card-body">
-                  <h6 class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Top Weaknesses</h6>
-                  <p class="small mb-0">{{ report.summary_data.weaknesses | default("Not analyzed") | replace("- ",
-                    "<br>• ") | safe }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
           <div class="mt-3">
             <h6 class="text-secondary fw-bold small">TRADER TYPE CLASSIFICATION</h6>
             <div class="p-3 bg-white border rounded">
@@ -269,7 +276,7 @@
   </div>
   <div id="buckets_block" class="collapsible-content">
     <section id="buckets" class="page-section">
-      {% include "components/patterns.html" %}
+
       {% include "components/buckets.html" %}
       {% include "components/trade_quality_distribution.html" %}
       {% include "components/holdingh_period_analysis.html" %}
@@ -294,108 +301,27 @@
       {% include "components/contextual_performance_dashboard.html" %}
     </div>
 
-    <!-- Charts Row -->
-    <div class="row mt-5">
-      <div class="col-md-8">
-        <div class="card border-0 shadow-sm">
-          <div class="card-body">
-            <h6 class="card-title fw-bold text-secondary mb-3">Equity Curve (P&L vs Nifty)</h6>
-            <div style="height: 300px;">
-              <canvas id="pnlTimelineChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-          <div class="card-body">
-            <h6 class="card-title fw-bold text-secondary mb-3">Asset Allocation</h6>
-            <div style="height: 250px;">
-              <canvas id="instrumentChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+
   </section>
 
-  <!-- SECTION 3: DEEP ANALYSIS (Tabs) -->
-  <section id="analysis" class="page-section">
-    <h3 class="section-title"><i class="bi bi-layers"></i> Deep Dive Analysis</h3>
+  <!-- SECTION 3: DEEP ANALYSIS (Risk Management) -->
+  <div class="collapsible-header active" data-target="analysis_block">
+    <span><i class="bi bi-shield-check"></i> Risk Management Deep Dive</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div id="analysis_block" class="collapsible-content open">
+    <section id="analysis" class="page-section">
+      <div class="row">
 
-    <ul class="nav nav-tabs mb-4" id="analysisTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions-pane"
-          type="button" role="tab" aria-selected="true">Trade Log</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="buckets-tab" data-bs-toggle="tab" data-bs-target="#buckets-pane" type="button"
-          role="tab" aria-selected="false">Pattern Buckets</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk-pane" type="button" role="tab"
-          aria-selected="false">Risk Management</button>
-      </li>
-    </ul>
-
-    <div class="tab-content" id="analysisTabsContent">
-
-      <!-- TAB 1: POSITIONS -->
-      <div class="tab-pane fade show active" id="positions-pane" role="tabpanel">
-        <!-- Filter Toolbar -->
-        <div class="d-flex gap-2 mb-3">
-          <select id="posStatus" class="form-select form-select-sm w-auto">
-            <option value="ALL">All Status</option>
-            <option value="OPEN">Open</option>
-            <option value="CLOSED">Closed</option>
-          </select>
-          <select id="posOutcome" class="form-select form-select-sm w-auto">
-            <option value="ALL">All Outcomes</option>
-            <option value="GAINER">Winners</option>
-            <option value="LOSER">Losers</option>
-          </select>
-        </div>
-        <div class="table-responsive" style="max-height: 500px; overflow-y:auto;">
-          <table class="table table-sm table-hover align-middle" id="positionsTable">
-            <thead class="table-light sticky-top">
-              <tr>
-                <th>Symbol</th>
-                <th>Qty</th>
-                <th class="text-end">P&L</th>
-                <th>Status</th>
-                <th>Bucket</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- TAB 2: BUCKETS -->
-      <div class="tab-pane fade" id="buckets-pane" role="tabpanel">
-        {% include "components/buckets.html" %}
-        <div class="mt-4">
-          {% include "components/trade_quality_distribution.html" %}
-        </div>
-      </div>
-
-      <!-- TAB 3: RISK -->
-      <div class="tab-pane fade" id="risk-pane" role="tabpanel">
-        <div class="row">
-          <div class="col-md-6">
-            <h6 class="fw-bold">Holding Period Analysis</h6>
-            {% include "components/holdingh_period_analysis.html" %}
-          </div>
-          <div class="col-md-6">
-            <h6 class="fw-bold">Risk Assessment</h6>
-            <div class="p-3 border rounded bg-light">
-              {{ report.analysis_text.risk_assessment | safe }}
-            </div>
+        <div class="col-md-12">
+          <h6 class="fw-bold">Risk Assessment</h6>
+          <div class="p-3 border rounded bg-light">
+            {{ report.analysis_text.risk_assessment | safe }}
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
   <!-- SECTION 4: AI INSIGHTS & RECOMMENDATIONS -->
   <section id="insights" class="page-section bg-gradient-light">
@@ -447,259 +373,254 @@
 
 </main>
 
-  {# =========================
-     SCRIPTS (same as before)
-     ========================= #}
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    const report = {{ report|tojson }};
+{# =========================
+SCRIPTS (same as before)
+========================= #}
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const report = {{ report| tojson }};
 
-    // P&L Timeline Chart
-    {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
-    (function(){
-      const ctx = document.getElementById('pnlTimelineChart');
-      if(ctx) {
-        const data = report.web_data.charts.pnl_timeline;
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: data.dates || [],
-            datasets: [{
-              label: 'P&L',
-              data: data.values || [],
-              borderColor: '#0d6efd',
-              backgroundColor: 'rgba(13,110,253,0.1)',
-              fill: true,
-              tension: 0.4
-            }]
+  // P&L Timeline Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
+  (function () {
+    const ctx = document.getElementById('pnlTimelineChart');
+    if (ctx) {
+      const data = report.web_data.charts.pnl_timeline;
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.dates || [],
+          datasets: [{
+            label: 'P&L',
+            data: data.values || [],
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13,110,253,0.1)',
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                grid: { color: 'rgba(0,0,0,0.05)' }
-              }
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(0,0,0,0.05)' }
             }
           }
-        });
-      }
-    })();
-    {% endif %}
-
-    // NIFTY Timeline Chart
-    {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
-    (function(){
-      const ctx = document.getElementById('niftyTimelineChart');
-      if(ctx) {
-        const data = report.web_data.charts.nifty_pnl_timeline;
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: data.dates || [],
-            datasets: [{
-              label: 'P&L',
-              data: data.values || [],
-              borderColor: '#0d6efd',
-              backgroundColor: 'rgba(13,110,253,0.1)',
-              fill: true,
-              tension: 0.4
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false }
-            },
-            scales: {
-              y: {
-                beginAtZero: false,
-                grid: { color: 'rgba(0,0,0,0.05)' }
-              }
-            }
-          }
-        });
-      }
-    })();
-    {% endif %}
-
-    // Instrument Distribution Chart
-    {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
-    (function(){
-      const ctx = document.getElementById('instrumentChart');
-      if(ctx) {
-        const data = report.web_data.charts.instrument_distribution;
-        new Chart(ctx, {
-          type: 'pie',
-          data: {
-            labels: data.map(d => d.asset_kind),
-            datasets: [{
-              data: data.map(d => d.value),
-              backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false
-          }
-        });
-      }
-    })();
-    {% endif %}
-
-    // Segment Distribution Chart
-    {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
-    (function(){
-      const ctx = document.getElementById('segmentChart');
-      const selector = document.getElementById('segmentFilter');
-      if(!ctx || !selector) return;
-
-      const raw = report.web_data.charts.segment_distribution;
-
-      function getFiltered() {
-        let v = selector.value;
-        let sorted = [...raw].sort((a,b)=>b.value-a.value);
-        if(v === "all") return sorted;
-        return sorted.slice(0, parseInt(v));
-      }
-
-      let chart;
-      function draw() {
-        let data = getFiltered();
-        if(chart) chart.destroy();
-        chart = new Chart(ctx, {
-          type:"pie",
-          data:{
-            labels:data.map(x=>x.asset_name),
-            datasets:[{ data:data.map(x=>x.value) }]
-          },
-          options:{
-            responsive:true,
-            maintainAspectRatio:false,
-            plugins:{ legend:{ position:'bottom' } }
-          }
-        });
-      }
-
-      selector.addEventListener("change", draw);
-      draw();
-    })();
-    {% endif %}
-
-    // Persona Radar Chart
-    {% if report.web_data and report.web_data.persona_scores %}
-    (function(){
-      const ctx = document.getElementById('personaRadarChart');
-      if(ctx) {
-        const scores = report.web_data.persona_scores;
-        new Chart(ctx, {
-          type: 'radar',
-          data: {
-            labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
-            datasets: [{
-              label: 'Persona Traits',
-              data: Object.values(scores).map(v => v * 100),
-              borderColor: '#0d6efd',
-              backgroundColor: 'rgba(13,110,253,0.2)',
-              borderWidth: 2,
-              pointRadius: 4
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              r: {
-                beginAtZero: true,
-                max: 100,
-                ticks: { stepSize: 20 }
-              }
-            }
-          }
-        });
-      }
-    })();
-    {% endif %}
-
-
-   // for scrolling
-      // Smooth scroll on click
-document.querySelectorAll('.section-nav .nav-link').forEach(link => {
-    link.addEventListener('click', function(e) {
-        e.preventDefault();
-        const targetID = this.getAttribute('href').substring(1);
-        const targetEl = document.getElementById(targetID);
-
-        window.scrollTo({
-            top: targetEl.offsetTop - 80,
-            behavior: 'smooth'
-        });
-    });
-});
-
-// ===== ACTIVE LINK HIGHLIGHT ON SCROLL =====
-const sections = document.querySelectorAll('.page-section');
-const navLinks = document.querySelectorAll('.section-nav .nav-link');
-
-const observer = new IntersectionObserver(
-  entries => {
-    entries.forEach(entry => {
-      const id = entry.target.getAttribute('id');
-
-      // When section becomes >40% visible
-      if (entry.isIntersecting) {
-        navLinks.forEach(link =>
-          link.classList.remove('active-section')
-        );
-
-        const activeLink = document.querySelector(
-          `.section-nav .nav-link[data-target="${id}"]`
-        );
-
-        if (activeLink) {
-          activeLink.classList.add('active-section');
         }
+      });
+    }
+  })();
+  {% endif %}
+
+  // NIFTY Timeline Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
+  (function () {
+    const ctx = document.getElementById('niftyTimelineChart');
+    if (ctx) {
+      const data = report.web_data.charts.nifty_pnl_timeline;
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.dates || [],
+          datasets: [{
+            label: 'P&L',
+            data: data.values || [],
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13,110,253,0.1)',
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              grid: { color: 'rgba(0,0,0,0.05)' }
+            }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
+  // Instrument Distribution Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
+  (function () {
+    const ctx = document.getElementById('instrumentChart');
+    if (ctx) {
+      const data = report.web_data.charts.instrument_distribution;
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: data.map(d => d.asset_kind),
+          datasets: [{
+            data: data.map(d => d.value),
+            backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+  })();
+  {% endif %}
+
+  // Segment Distribution Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
+  (function () {
+    const ctx = document.getElementById('segmentChart');
+    const selector = document.getElementById('segmentFilter');
+    if (!ctx || !selector) return;
+
+    const raw = report.web_data.charts.segment_distribution;
+
+    function getFiltered() {
+      let v = selector.value;
+      let sorted = [...raw].sort((a, b) => b.value - a.value);
+      if (v === "all") return sorted;
+      return sorted.slice(0, parseInt(v));
+    }
+
+    let chart;
+    function draw() {
+      let data = getFiltered();
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: data.map(x => x.asset_name),
+          datasets: [{ data: data.map(x => x.value) }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    selector.addEventListener("change", draw);
+    draw();
+  })();
+  {% endif %}
+
+  // Persona Radar Chart
+  {% if report.web_data and report.web_data.persona_scores %}
+  (function () {
+    const ctx = document.getElementById('personaRadarChart');
+    if (ctx) {
+      const scores = report.web_data.persona_scores;
+      new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
+          datasets: [{
+            label: 'Persona Traits',
+            data: Object.values(scores).map(v => v * 100),
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13,110,253,0.2)',
+            borderWidth: 2,
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              beginAtZero: true,
+              max: 100,
+              ticks: { stepSize: 20 }
+            }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
+
+  // for scrolling
+  // Smooth scroll on click
+  document.querySelectorAll('.section-nav .nav-link').forEach(link => {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      const targetID = this.getAttribute('href').substring(1);
+      const targetEl = document.getElementById(targetID);
+
+      window.scrollTo({
+        top: targetEl.offsetTop - 80,
+        behavior: 'smooth'
+      });
+    });
+  });
+
+  // ===== ACTIVE LINK HIGHLIGHT ON SCROLL =====
+  const sections = document.querySelectorAll('.page-section');
+  const navLinks = document.querySelectorAll('.section-nav .nav-link');
+
+  const observer = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        const id = entry.target.getAttribute('id');
+
+        // When section becomes >40% visible
+        if (entry.isIntersecting) {
+          navLinks.forEach(link =>
+            link.classList.remove('active-section')
+          );
+
+          const activeLink = document.querySelector(
+            `.section-nav .nav-link[data-target="${id}"]`
+          );
+
+          if (activeLink) {
+            activeLink.classList.add('active-section');
+          }
+        }
+      });
+    },
+    {
+      threshold: 0.4  // triggers highlight when 40% visible
+    }
+  );
+
+  // Observe all sections
+  sections.forEach(section => observer.observe(section));
+
+
+  // Collapsible Sections Logic
+  document.querySelectorAll('.collapsible-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const targetID = header.getAttribute('data-target');
+      const content = document.getElementById(targetID);
+
+      header.classList.toggle('active');
+      if (content) {
+        content.classList.toggle('open');
       }
     });
-  },
-  {
-    threshold: 0.4  // triggers highlight when 40% visible
-  }
-);
+  });
 
-// Observe all sections
-sections.forEach(section => observer.observe(section));
-
-
-//for mkaing collapsable js
-document.querySelectorAll('.collapsible-header').forEach(header => {
-    const targetID = header.getAttribute('data-target');
-    const content = document.getElementById(targetID);
-
-    header.addEventListener('click', () => {
-        header.classList.toggle('active');
-        content.classList.toggle('open');
-    });
-});
-
-
-//additing tool tips explantation in risk metrics // Enable Bootstrap tooltips
-var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-  return new bootstrap.Tooltip(tooltipTriggerEl)
-})
-document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-  new bootstrap.Tooltip(el);
-});
-
-
-
-  </script>
+  // Enable Bootstrap Tooltips
+  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+</script>
 
 {% endblock %}

@@ -11,7 +11,7 @@ import logging
 import re
 import pandas as pd
 import numpy as np
-from pathlib import Path;
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()

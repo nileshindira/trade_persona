@@ -162,6 +162,7 @@ class ReportGenerator:
             "risk_score": self._risk_score(metrics, patterns),
             "web_data": web,
             "web": web,
+            "trade_analytics": metrics.get("trade_analytics", {}),
 
             # Derived / Specific Web Data
             "recommendations": self._format_recommendations(
@@ -220,10 +221,19 @@ class ReportGenerator:
     def export_html(self, report: Dict, filepath: str, theme="light"):
         tpl = self.jinja.get_template("report.html")
         report_safe = self.make_jinja_safe(report)
+        
+        # Read theme content to embed directly
+        theme_path = self.themes_dir / f"{theme}.css"
+        if theme_path.exists():
+            theme_css_content = theme_path.read_text(encoding="utf-8")
+        else:
+            theme_css_content = ""
+
         html = tpl.render(
             report=report_safe,
             static_path="static",
-            theme_css=f"themes/{theme}.css"
+            theme_css=f"themes/{theme}.css", # Keep as backup
+            theme_css_content=theme_css_content # New embedded content
         )
 
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
@@ -252,7 +262,7 @@ def export_html_from_json(json_path, html_path, base_dir=None):
 
 
 if __name__ == "__main__":
-    with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
+    with open("D:/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     
     # Patch for missing context_performance in older JSONs
@@ -265,4 +275,4 @@ if __name__ == "__main__":
         }
 
     gen = ReportGenerator()
-    gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")
+    gen.export_html(data, "D:/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")
