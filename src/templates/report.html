@@ -2,108 +2,449 @@
 
 {% block content %}
 
-  {# ===== HERO HEADER ===== #}
-  {% include "components/header.html" %}
+<!-- Custom Styles for Improved Report UI/UX -->
+<style>
+  /* Global Resets */
+  :root {
+    --primary-color: #4f46e5;
+    --secondary-color: #6366f1;
+    --bg-light: #f3f4f6;
+    --bg-white: #ffffff;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+  }
 
-  {# ===== STICKY SECTION NAV ===== #}
-  <nav class="section-nav mt-3 mb-3">
-  <ul class="nav nav-pills flex-wrap gap-2">
+  body {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="overview" href="#overview"><i class="bi bi-speedometer2 me-1"></i> Overview</a></li>
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 600;
+    color: #111827;
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="metrics" href="#metrics"><i class="bi bi-clipboard-data me-1"></i> Metrics</a></li>
+  /* --- Navbar & Smooth Scroll --- */
+  .section-nav {
+    position: sticky;
+    top: 10px;
+    z-index: 1020;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="charts" href="#charts"><i class="bi bi-graph-up-arrow me-1"></i> Charts</a></li>
+  .nav-pills .nav-link {
+    color: var(--text-secondary);
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i class="bi bi-person-badge me-1"></i> Persona</a></li>
+  .nav-pills .nav-link:hover {
+    background-color: #eff6ff;
+    color: var(--primary-color);
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="positions" href="#positions"><i class="bi bi-box-seam me-1"></i> Positions</a></li>
+  .nav-pills .nav-link.active-section {
+    background-color: var(--primary-color);
+    color: white;
+    box-shadow: var(--shadow-sm);
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i class="bi bi-grid-3x3-gap me-1"></i> Patterns & Buckets</a></li>
+  /* --- Page Sections --- */
+  .page-section {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+    padding: 2rem;
+    border: 1px solid var(--border-color);
+    scroll-margin-top: 100px;
+    /* Offset for sticky nav */
+  }
 
-    <li class="nav-item"><a class="nav-link" data-target="ai_insights" href="#ai_insights"><i class="bi bi-stars me-1"></i> AI Insights</a></li>
+  .section-title {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #f3f4f6;
+    padding-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
 
+  /* --- Metric Cards (Modernized) --- */
+  .metric-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
 
+  .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
 
+  .metric-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+  }
+
+  .metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* --- Tabs --- */
+  .nav-tabs .nav-link {
+    border: none;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .nav-tabs .nav-link.active {
+    border-bottom: 2px solid var(--primary-color);
+    color: var(--primary-color);
+    background: transparent;
+  }
+
+  /* --- AI Insights Box --- */
+  .response-box {
+    background-color: #f8fafc;
+    border-left: 4px solid var(--primary-color);
+  }
+</style>
+
+<!-- HEADER SECTION -->
+{% include "components/header.html" %}
+
+<!-- STICKY NAVIGATION -->
+<nav class="section-nav">
+  <ul class="nav nav-pills d-flex justify-content-center gap-2">
+    <li class="nav-item">
+      <a class="nav-link active-section" href="#overview" data-target="overview">
+        <i class="bi bi-speedometer2"></i> Overview
+      </a>
+    </li>
+
+    <li class="nav-item"><a class="nav-link" data-target="metrics" href="#metrics"><i
+          class="bi bi-clipboard-data me-1"></i> Metrics</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="charts" href="#charts"><i
+          class="bi bi-graph-up-arrow me-1"></i> Charts</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i
+          class="bi bi-person-badge me-1"></i> Persona</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="positions" href="#positions"><i
+          class="bi bi-box-seam me-1"></i> Positions</a></li>
+
+    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i
+          class="bi bi-grid-3x3-gap me-1"></i> Patterns & Buckets</a></li>
+
+    <li class="nav-item">
+      <a class="nav-link" href="#performance" data-target="performance">
+        <i class="bi bi-clipboard-data"></i> Performance
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#analysis" data-target="analysis">
+        <i class="bi bi-search"></i> Deep Analysis
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#insights" data-target="insights">
+        <i class="bi bi-robot"></i> AI Verdict
+      </a>
+    </li>
   </ul>
 </nav>
 
-<main class="mt-2">
+<main>
 
-    <!-- ========== OVERVIEW ========== -->
-    <div class="collapsible-header" data-target="overview_block">
-        <span>📊 Overview</span>
-        <i class="bi bi-chevron-down"></i>
-    </div>
-    <div id="overview_block" class="collapsible-content">
-        <section id="overview" class="page-section">
-            {% include "components/executive_summary.html" %}
-        </section>
-    </div>
+  <!-- SECTION 1: OVERVIEW & HEALTH -->
+  <section id="overview" class="page-section">
+    <h3 class="section-title"><i class="bi bi-activity"></i> Executive Summary</h3>
+    {% include "components/executive_summary.html" %}
+
+    <div class="mt-4">
+      <h5 class="mb-3 text-secondary">Persona & Risk Profile</h5>
+      <div class="row g-4">
+        <!-- Persona Chart -->
+        <div class="col-md-5">
+          <div class="card h-100 border-0 shadow-none bg-light pt-3">
+            <canvas id="personaRadarChart" style="max-height: 300px;"></canvas>
+          </div>
+        </div>
+        <!-- Key Strengths/Weaknesses from AI -->
+        <div class="col-md-7">
+          <div class="row">
+            <div class="col-6">
+              <div class="card bg-success-subtle border-0">
+                <div class="card-body">
+                  <h6 class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Top Strengths</h6>
+                  <p class="small mb-0">{{ report.summary_data.strengths | default("Not analyzed") | replace("- ",
+                    "<br>• ") | safe }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="card bg-danger-subtle border-0">
+                <div class="card-body">
+                  <h6 class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Top Weaknesses</h6>
+                  <p class="small mb-0">{{ report.summary_data.weaknesses | default("Not analyzed") | replace("- ",
+                    "<br>• ") | safe }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <h6 class="text-secondary fw-bold small">TRADER TYPE CLASSIFICATION</h6>
+            <div class="p-3 bg-white border rounded">
+              {{ report.analysis_text.trader_profile | safe }}
+            </div>
+          </div>
+        </div>
+  </section>
 
 
+  <!-- ========== METRICS ========== -->
+  <div class="collapsible-header" data-target="metrics_block">
+    <span>📈 Metrics Dashboard</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div id="metrics_block" class="collapsible-content">
+    <section id="metrics" class="page-section">
+      {% include "components/comprehensive_metrice_dhashboard.html" %}
+    </section>
+  </div>
 
-    <!-- ========== METRICS ========== -->
-    <div class="collapsible-header" data-target="metrics_block">
-        <span>📈 Metrics Dashboard</span>
-        <i class="bi bi-chevron-down"></i>
-    </div>
-    <div id="metrics_block" class="collapsible-content">
-        <section id="metrics" class="page-section">
-            {% include "components/comprehensive_metrice_dhashboard.html" %}
-        </section>
+  <!-- ========== CHARTS ========== -->
+  <div class="collapsible-header" data-target="charts_block">
+    <span>📉 Charts</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div id="charts_block" class="collapsible-content">
+    <section id="charts" class="page-section">
+      {% include "components/charts.html" %}
+      {% include "components/time_based_performance_chart.html" %}
+    </section>
+  </div>
+
+  <!-- ========== POSITIONS ========== -->
+  <div class="collapsible-header" data-target="positions_block">
+    <span>📦 Positions</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div id="positions_block" class="collapsible-content">
+    <section id="positions" class="page-section">
+      {% include "components/positions_table.html" %}
+      {% include "components/gainers_n_losers.html" %}
+    </section>
+  </div>
+
+  <!-- ========== PATTERNS + BUCKETS ========== -->
+  <div class="collapsible-header" data-target="buckets_block">
+    <span>🧩 Patterns & Buckets</span>
+    <i class="bi bi-chevron-down"></i>
+  </div>
+  <div id="buckets_block" class="collapsible-content">
+    <section id="buckets" class="page-section">
+      {% include "components/patterns.html" %}
+      {% include "components/buckets.html" %}
+      {% include "components/trade_quality_distribution.html" %}
+      {% include "components/holdingh_period_analysis.html" %}
+    </section>
+  </div>
+
+
+  <!-- SECTION 2: PERFORMANCE METRICS -->
+  <section id="performance" class="page-section">
+    <h3 class="section-title"><i class="bi bi-graph-up"></i> Performance Analysis</h3>
+
+    <!-- Main Metrics Grid -->
+    {% include "components/comprehensive_metrice_dhashboard.html" %}
+
+    <!-- Contextual Performance (Events, News, Volume) -->
+    <div class="mt-5">
+      <h5 class="mb-3 d-flex align-items-center gap-2">
+        <span class="badge bg-indigo text-white p-2 rounded-circle" style="background:#6366f1"><i
+            class="bi bi-crosshair"></i></span>
+        Contextual Performance
+      </h5>
+      {% include "components/contextual_performance_dashboard.html" %}
     </div>
 
-    <!-- ========== CHARTS ========== -->
-    <div class="collapsible-header" data-target="charts_block">
-        <span>📉 Charts</span>
-        <i class="bi bi-chevron-down"></i>
+    <!-- Charts Row -->
+    <div class="row mt-5">
+      <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title fw-bold text-secondary mb-3">Equity Curve (P&L vs Nifty)</h6>
+            <div style="height: 300px;">
+              <canvas id="pnlTimelineChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <h6 class="card-title fw-bold text-secondary mb-3">Asset Allocation</h6>
+            <div style="height: 250px;">
+              <canvas id="instrumentChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div id="charts_block" class="collapsible-content">
-        <section id="charts" class="page-section">
-            {% include "components/charts.html" %}
-            {% include "components/time_based_performance_chart.html" %}
-        </section>
-    </div>
+  </section>
 
-    <!-- ========== POSITIONS ========== -->
-    <div class="collapsible-header" data-target="positions_block">
-        <span>📦 Positions</span>
-        <i class="bi bi-chevron-down"></i>
-    </div>
-    <div id="positions_block" class="collapsible-content">
-        <section id="positions" class="page-section">
-            {% include "components/positions_table.html" %}
-            {% include "components/gainers_n_losers.html" %}
-        </section>
-    </div>
+  <!-- SECTION 3: DEEP ANALYSIS (Tabs) -->
+  <section id="analysis" class="page-section">
+    <h3 class="section-title"><i class="bi bi-layers"></i> Deep Dive Analysis</h3>
 
-    <!-- ========== PATTERNS + BUCKETS ========== -->
-    <div class="collapsible-header" data-target="buckets_block">
-        <span>🧩 Patterns & Buckets</span>
-        <i class="bi bi-chevron-down"></i>
-    </div>
-    <div id="buckets_block" class="collapsible-content">
-        <section id="buckets" class="page-section">
-            {% include "components/patterns.html" %}
-            {% include "components/buckets.html" %}
-            {% include "components/trade_quality_distribution.html" %}
+    <ul class="nav nav-tabs mb-4" id="analysisTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions-pane"
+          type="button" role="tab" aria-selected="true">Trade Log</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="buckets-tab" data-bs-toggle="tab" data-bs-target="#buckets-pane" type="button"
+          role="tab" aria-selected="false">Pattern Buckets</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk-pane" type="button" role="tab"
+          aria-selected="false">Risk Management</button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="analysisTabsContent">
+
+      <!-- TAB 1: POSITIONS -->
+      <div class="tab-pane fade show active" id="positions-pane" role="tabpanel">
+        <!-- Filter Toolbar -->
+        <div class="d-flex gap-2 mb-3">
+          <select id="posStatus" class="form-select form-select-sm w-auto">
+            <option value="ALL">All Status</option>
+            <option value="OPEN">Open</option>
+            <option value="CLOSED">Closed</option>
+          </select>
+          <select id="posOutcome" class="form-select form-select-sm w-auto">
+            <option value="ALL">All Outcomes</option>
+            <option value="GAINER">Winners</option>
+            <option value="LOSER">Losers</option>
+          </select>
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y:auto;">
+          <table class="table table-sm table-hover align-middle" id="positionsTable">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Symbol</th>
+                <th>Qty</th>
+                <th class="text-end">P&L</th>
+                <th>Status</th>
+                <th>Bucket</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 2: BUCKETS -->
+      <div class="tab-pane fade" id="buckets-pane" role="tabpanel">
+        {% include "components/buckets.html" %}
+        <div class="mt-4">
+          {% include "components/trade_quality_distribution.html" %}
+        </div>
+      </div>
+
+      <!-- TAB 3: RISK -->
+      <div class="tab-pane fade" id="risk-pane" role="tabpanel">
+        <div class="row">
+          <div class="col-md-6">
+            <h6 class="fw-bold">Holding Period Analysis</h6>
             {% include "components/holdingh_period_analysis.html" %}
-        </section>
+          </div>
+          <div class="col-md-6">
+            <h6 class="fw-bold">Risk Assessment</h6>
+            <div class="p-3 border rounded bg-light">
+              {{ report.analysis_text.risk_assessment | safe }}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <!-- ========== AI INSIGHTS ========== -->
-    <div class="collapsible-header" data-target="ai_block">
-        <span>🤖 AI Insights</span>
-        <i class="bi bi-chevron-down"></i>
-    </div>
-    <div id="ai_block" class="collapsible-content">
-        <section id="ai_insights" class="page-section">
-            {% include "components/ai_insights.html" %}
-        </section>
-    </div>
+  <!-- SECTION 4: AI INSIGHTS & RECOMMENDATIONS -->
+  <section id="insights" class="page-section bg-gradient-light">
+    <h3 class="section-title"><i class="bi bi-stars"></i> AI Verdict & Recommendations</h3>
 
-    {% include "components/footer.html" %}
+    <div class="row g-4">
+      <div class="col-md-8">
+        <div class="card h-100 border-primary border-opacity-25 shadow-sm">
+          <div class="card-header bg-primary bg-opacity-10 py-3">
+            <h5 class="card-title text-primary mb-0 fw-bold">🚀 Action Plan</h5>
+          </div>
+          <div class="card-body">
+            {{ report.analysis_text.recommendations | safe }}
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 border-0 bg-dark text-white shadow">
+          <div class="card-body">
+            <h5 class="fw-bold mb-4">🏆 Final Verdict</h5>
+            <div class="display-1 fw-bold mb-2 text-center text-warning">
+              {{ report.risk_score | default(50) }}<span class="fs-4 text-muted">/100</span>
+            </div>
+            <p class="text-center text-white-50 mb-4">Overall Performance Score</p>
+
+            <hr class="border-secondary">
+
+            <div class="d-grid gap-2">
+              <div class="d-flex justify-content-between">
+                <span>Consistency</span>
+                <span class="text-info">{{ report.persona_scores.consistency | float * 100 | round }}%</span>
+              </div>
+              <div class="d-flex justify-content-between">
+                <span>Discipline</span>
+                <span class="text-warning">{{ report.persona_scores.discipline_score | float * 100 | round }}%</span>
+              </div>
+              <div class="d-flex justify-content-between">
+                <span>Emotional Control</span>
+                <span class="text-success">{{ report.persona_scores.emotional_control | float * 100 | round }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% include "components/footer.html" %}
+
 </main>
 
   {# =========================

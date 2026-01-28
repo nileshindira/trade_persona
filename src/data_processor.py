@@ -37,7 +37,7 @@ class TradingDataProcessor:
                 SELECT symbol, date, open, high, low, close, volume,
                        t_score, f_score, total_score,
                        is_52week_high, is_52week_low, is_alltime_high,
-                        is_alltime_low, is_event, atr, is_high_volume,
+                        is_alltime_low, is_event, atr, is_high_volume, is_news, news_category,
                         market_behaviour, chart_charts
                 FROM {table_name};
             """
@@ -138,7 +138,7 @@ class TradingDataProcessor:
 
             # Convert DB dates to string as well
             db_df['date'] = pd.to_datetime(db_df['date']).dt.strftime("%Y-%m-%d")
-
+            db_df = db_df.sort_values("date")
             # Build dict: {"2024-01-01": close}
             nifty_data = dict(zip(db_df['date'], db_df['close']))
             # print(nifty_data)
@@ -147,6 +147,143 @@ class TradingDataProcessor:
         except Exception as e:
             print("Error:", e)
             return {}, {}
+
+    def _enrich_from_market_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enrich DF with data from 'market_data' database:
+        1. nse_stock: dist_from_52w_high_pct, pct_chg_1w, pct_chg_1m, pct_chg_6m
+        2. nse_index_ind: NIFTY, NIFTYMIDCAP150, NIFTYSMLCAP250 context
+        """
+        if df.empty:
+            return df
+
+        try:
+            # Re-use config but switch DB name
+            db_conf = self.config["database"].copy()
+            db_conf["dbname"] = "market_data"
+
+            unique_dates = df['trade_date'].dropna().unique()
+            if len(unique_dates) == 0:
+                return df
+                
+            # Convert numpy dates to python dates/strings for SQL
+            date_strs = [str(d) for d in unique_dates]
+            date_tuple = tuple(date_strs)
+            
+            # Identify symbols to fetch from nse_stock
+            # Clean symbols to match DB (e.g. "RELIANCE" from "RELIANCE EQ")
+            # This is a heuristic; might need adjustment based on valid symbols
+            symbols = df['symbol'].unique().tolist()
+            # Try to match raw symbols or standard tokens
+            # For efficiency in SQL, we might just fetch all for the DATES.
+            # Assuming nse_stock isn't massive for just a few days of data.
+            
+            conn = psycopg2.connect(
+                dbname=db_conf["dbname"],
+                user=db_conf["user"],
+                password=db_conf["password"],
+                host=db_conf["host"],
+                port=db_conf.get("port", 5432)
+            )
+
+            # --- 1. Fetch nse_stock data (Momentum Metrics) ---
+            # We fetch for ALL available stocks on these DATES to ensure better matching
+            # filtering by symbol list in SQL can be tricky with partial matches.
+            query_stock = f"""
+                SELECT symbol, date, 
+                       dist_from_52w_high_pct, pct_chg_1w, pct_chg_1m, pct_chg_6m
+                FROM nse_stock
+                WHERE date IN %s
+            """
+            
+            # Handle single date tuple quirk in Python (x,)
+            params = (date_tuple,)
+            
+            mkt_stock_df = pd.read_sql(query_stock, conn, params=params)
+             
+            if not mkt_stock_df.empty:
+                mkt_stock_df['date'] = pd.to_datetime(mkt_stock_df['date']).dt.date
+                # Pre-process match keys
+                # We'll simple-match on 'symbol' (uppercase) and 'date'
+                # But df['symbol'] might be 'RELIANCE EQ'. 
+                # We'll try to extract the first token from df['symbol'] for matching.
+                
+                # Create a lookup key in main df
+                df['__base_sym'] = df['symbol'].astype(str).str.split().str[0].str.upper().str.strip()
+                mkt_stock_df['symbol'] = mkt_stock_df['symbol'].str.upper().str.strip()
+                
+                # Merge
+                # We left join to keep all trades
+                df = df.merge(
+                    mkt_stock_df, 
+                    left_on=['__base_sym', 'trade_date'], 
+                    right_on=['symbol', 'date'], 
+                    how='left', 
+                    suffixes=('', '_mkt')
+                )
+                
+                # Cleanup
+                df.drop(columns=['__base_sym', 'symbol_mkt', 'date_mkt', 'date'], inplace=True, errors='ignore')
+
+            # --- 2. Fetch nse_index_ind data (Market Context) ---
+            # We need specific indices
+            indices = ['NIFTY', 'NIFTYMIDCAP150', 'NIFTYSMLCAP250']
+            
+            query_index = f"""
+                SELECT symbol, date, close, pct_chg_1w, ema_50, ema_200
+                FROM nse_index_ind
+                WHERE symbol IN %s AND date IN %s
+            """
+            
+            mkt_index_df = pd.read_sql(query_index, conn, params=(tuple(indices), date_tuple))
+            conn.close()
+
+            if not mkt_index_df.empty:
+                mkt_index_df['date'] = pd.to_datetime(mkt_index_df['date']).dt.date
+                
+                # Pivot this data so each Date has columns like:
+                # nifty_close, midcap_close, etc.
+                
+                # Map DB symbols to readable prefixes
+                sym_map = {
+                    'NIFTY': 'nifty50',
+                    'NIFTYMIDCAP150': 'midcap',
+                    'NIFTYSMLCAP250': 'smlcap'
+                }
+                mkt_index_df['prefix'] = mkt_index_df['symbol'].map(sym_map).fillna('other')
+                
+                # We want to pivot on 'date'
+                # Columns to pivot: close, pct_chg_1w, ema_50, ema_200
+                
+                pivoted_dfs = []
+                for idx_sym, prefix in sym_map.items():
+                    subset = mkt_index_df[mkt_index_df['symbol'] == idx_sym].copy()
+                    if subset.empty:
+                        continue
+                        
+                    subset = subset[['date', 'close', 'pct_chg_1w', 'ema_50', 'ema_200']]
+                    subset.columns = ['date', f'{prefix}_close', f'{prefix}_pct_chg_1w', f'{prefix}_ema_50', f'{prefix}_ema_200']
+                    pivoted_dfs.append(subset)
+                
+                if pivoted_dfs:
+                    # Merge all index data info a single market_context_df per date
+                    from functools import reduce
+                    market_ctx = reduce(
+                        lambda left, right: pd.merge(left, right, on='date', how='outer'), 
+                        pivoted_dfs
+                    )
+                    
+                    # Merge into main df
+                    df = df.merge(market_ctx, left_on='trade_date', right_on='date', how='left')
+                    df.drop(columns=['date'], inplace=True, errors='ignore')
+
+            self.logger.info("✅ Enriched with Market Data (NSE Stock + Indices)")
+            return df
+
+        except Exception as e:
+            self.logger.error(f"❌ Error enriching market data: {str(e)}")
+            # Return original df on failure to avoid pipeline break
+            return df
 
 
     # =========================================================
@@ -166,8 +303,11 @@ class TradingDataProcessor:
 
             self.logger.info(f"📂 Loaded {len(df)} records from {filepath}")
 
-            # 1) Add DB scores/technicals
+            # 1) Add DB scores/technicals (stock_db)
             df = self.getadditionaldata(df)
+
+            # 1.5) Add Market Data (market_data DB: nse_stock, nse_index_ind)
+            df = self._enrich_from_market_data(df)
 
             # 2) Clean & normalize
             df = self.clean_data(df)
@@ -230,222 +370,164 @@ class TradingDataProcessor:
     # =========================================================
     # Trade Pairing (FIFO-based P&L)
     # =========================================================
-    def pair_trades(self, df: pd.DataFrame, output_dir: str = "data/trade_exports", trader_name: str = "Trader") -> pd.DataFrame:
+    from pathlib import Path
+    import pandas as pd
 
+    def pair_trades(
+            self,
+            df: pd.DataFrame,
+            output_dir: str = "data/trade_exports",
+            trader_name: str = "Trader",
+    ) -> pd.DataFrame:
         """
-        Pair BUY and SALE trades correctly for realized P&L using FIFO matching.
-        Exports three files:
-          1. paired_trades_detailed.csv  -> raw trades with P&L per row
-          2. realized_trades_only.csv    -> only closed trades (nonzero P&L)
-          3. trade_pairs_summary.csv     -> paired BUY–SALE rows with full details
+        FIFO trade pairing.
+        PnL is computed STRICTLY as (sell_price - buy_price) * matched_qty
+        Open trades carry pnl = 0 (no mark-to-market).
         """
+
         df = df.copy()
+        df["transaction_type"] = df["transaction_type"].str.upper()
         df["pnl"] = 0.0
         df["holding_period_minutes"] = 0.0
-        df["transaction_type"] = df["transaction_type"].astype(str).str.upper()
+
         df = df.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
 
-        all_unclosed_buys, all_unclosed_sales = [], []
-        trade_pairs = []  # to store paired trade summaries
+        trade_pairs = []
 
-        for symbol in df["symbol"].unique():
-            symbol_mask = df["symbol"] == symbol
-            symbol_trades = df.loc[symbol_mask].copy()
-            buy_stack, sale_stack = [], []
+        for symbol, symbol_df in df.groupby("symbol", sort=False):
 
-            for i, row in symbol_trades.iterrows():
-                typ, qty, price, tdate, t_t_score, t_f_score = (
-                    row["transaction_type"],
-                    float(row["quantity"]),
-                    float(row["price"]),
-                    row["trade_date"],
-                    row["t_score"],
-                    row["f_score"]
-                )
+            buy_queue = []  # [qty, price, date, t_score, f_score]
+            sell_queue = []  # [qty, price, date, t_score, f_score]
 
-                # ===== LONG TRADES =====
+            for idx, row in symbol_df.iterrows():
+                typ = row["transaction_type"]
+                qty = float(row["quantity"])
+                price = float(row["price"])
+                date = row["trade_date"]
+                t_score = row.get("t_score")
+                f_score = row.get("f_score")
+
+                # ===================== BUY =====================
                 if typ == "BUY":
-                    remaining_qty, pnl_total, hold_total, hold_count = qty, 0.0, 0.0, 0
-                    while remaining_qty > 0 and sale_stack:
-                        s_qty, s_price, s_date, s_t_score, s_f_score = sale_stack[0]
-                        matched = min(s_qty, remaining_qty)
+                    remaining = qty
+
+                    while remaining > 0 and sell_queue:
+                        s_qty, s_price, s_date, s_t, s_f = sell_queue[0]
+                        matched = min(remaining, s_qty)
+
                         pnl = (s_price - price) * matched
-                        hold = (tdate - s_date).total_seconds() / 60
-                        pnl_total += pnl
-                        hold_total += hold
-                        hold_count += 1
+                        hold = (date - s_date).total_seconds() / 60
 
-                        # record trade pair
-                        trade_pairs.append(
-                            {
-                                "symbol": symbol,
-                                "buy_date": s_date,
-                                "buy_price": s_price,
-                                "buy_qty": matched,
-                                "buy_score": t_t_score,
-                                "buy_f_score": t_f_score,
-                                "sell_date": tdate,
-                                "sell_price": price,
-                                "sell_qty": matched,
-                                "sell_score": s_t_score,
-                                "sell_f_score": s_f_score,
-                                "pnl": pnl,
-                                "status": "CLOSED",
-                            }
-                        )
+                        trade_pairs.append({
+                            "symbol": symbol,
+                            "buy_date": date,
+                            "buy_price": price,
+                            "buy_qty": matched,
+                            "sell_date": s_date,
+                            "sell_price": s_price,
+                            "sell_qty": matched,
+                            "pnl": pnl,
+                            "holding_period_minutes": hold,
+                            "status": "CLOSED",
+                        })
 
+                        df.loc[idx, "pnl"] += pnl
+                        df.loc[idx, "holding_period_minutes"] += hold
+
+                        remaining -= matched
                         s_qty -= matched
-                        remaining_qty -= matched
+
                         if s_qty == 0:
-                            sale_stack.pop(0)
+                            sell_queue.pop(0)
                         else:
-                            sale_stack[0][0] = s_qty
-                            sale_stack[0][3] = s_t_score
-                            sale_stack[0][4] = s_f_score
+                            sell_queue[0][0] = s_qty
 
-                    if pnl_total != 0:
-                        df.loc[i, "pnl"] = pnl_total
-                        df.loc[i, "holding_period_minutes"] = hold_total / max(hold_count, 1)
-                    if remaining_qty > 0:
-                        buy_stack.append([remaining_qty, price, tdate, t_t_score, t_f_score])
+                    if remaining > 0:
+                        buy_queue.append([remaining, price, date, t_score, f_score])
 
-                # ===== SHORT TRADES =====
+                # ===================== SALE =====================
                 elif typ == "SALE":
-                    remaining_qty, pnl_total, hold_total, hold_count = qty, 0.0, 0.0, 0
-                    while remaining_qty > 0 and buy_stack:
-                        b_qty, b_price, b_date, b_t_score, b_f_score = buy_stack[0]
-                        matched = min(b_qty, remaining_qty)
+                    remaining = qty
+
+                    while remaining > 0 and buy_queue:
+                        b_qty, b_price, b_date, b_t, b_f = buy_queue[0]
+                        matched = min(remaining, b_qty)
+
                         pnl = (price - b_price) * matched
-                        hold = (tdate - b_date).total_seconds() / 60
-                        pnl_total += pnl
-                        hold_total += hold
-                        hold_count += 1
+                        hold = (date - b_date).total_seconds() / 60
 
-                        trade_pairs.append(
-                            {
-                                "symbol": symbol,
-                                "buy_date": b_date,
-                                "buy_price": b_price,
-                                "buy_qty": matched,
-                                "buy_score": b_t_score,
-                                "buy_f_score": b_f_score,
-                                "sell_date": tdate,
-                                "sell_price": price,
-                                "sell_qty": matched,
-                                "sell_score": t_t_score,
-                                "sell_f_score": t_f_score,
-                                "pnl": pnl,
-                                "status": "CLOSED",
-                            }
-                        )
+                        trade_pairs.append({
+                            "symbol": symbol,
+                            "buy_date": b_date,
+                            "buy_price": b_price,
+                            "buy_qty": matched,
+                            "sell_date": date,
+                            "sell_price": price,
+                            "sell_qty": matched,
+                            "pnl": pnl,
+                            "holding_period_minutes": hold,
+                            "status": "CLOSED",
+                        })
 
+                        df.loc[idx, "pnl"] += pnl
+                        df.loc[idx, "holding_period_minutes"] += hold
+
+                        remaining -= matched
                         b_qty -= matched
-                        remaining_qty -= matched
+
                         if b_qty == 0:
-                            buy_stack.pop(0)
-
+                            buy_queue.pop(0)
                         else:
-                            buy_stack[0][0] = b_qty
-                            buy_stack[0][3] = b_t_score
-                            buy_stack[0][4] = b_f_score
+                            buy_queue[0][0] = b_qty
 
-                    if pnl_total != 0:
-                        df.loc[i, "pnl"] = pnl_total
-                        df.loc[i, "holding_period_minutes"] = hold_total / max(hold_count, 1)
-                    if remaining_qty > 0:
-                        sale_stack.append([remaining_qty, price, tdate, t_t_score, t_f_score])
+                    if remaining > 0:
+                        sell_queue.append([remaining, price, date, t_score, f_score])
 
-            # any leftover buys/sales → open positions
-            for qty, price, date, t_score, f_score in buy_stack:
-                trade_pairs.append(
-                    {
-                        "symbol": symbol,
-                        "buy_date": date,
-                        "buy_price": price,
-                        "buy_qty": qty,
-                        "buy_score": t_score,
-                        "buy_f_score": f_score,
-                        "sell_date": None,
-                        "sell_price": None,
-                        "sell_qty": 0,
-                        "pnl": 0,
-                        "status": "OPEN",
-                    }
-                )
-            for qty, price, date, t_score, f_score in sale_stack:
-                trade_pairs.append(
-                    {
-                        "symbol": symbol,
-                        "buy_date": None,
-                        "buy_price": None,
-                        "buy_qty": 0,
-                        "buy_score": t_score,
-                        "buy_f_score": f_score,
-                        "sell_date": date,
-                        "sell_price": price,
-                        "sell_qty": qty,
-                        "pnl": 0,
-                        "status": "OPEN",
-                    }
-                )
+            # ========== OPEN POSITIONS (NO MTM HERE) ==========
+            for qty, price, date, _, _ in buy_queue:
+                trade_pairs.append({
+                    "symbol": symbol,
+                    "buy_date": date,
+                    "buy_price": price,
+                    "buy_qty": qty,
+                    "sell_date": None,
+                    "sell_price": 0,
+                    "sell_qty": qty,
+                    "pnl": (0-price)*qty,
+                    "holding_period_minutes": 0.0,
+                    "status": "OPEN",
+                })
 
-        # === Fill missing values ===
-        df["pnl"] = df["pnl"].fillna(0)
-        df["holding_period_minutes"] = df["holding_period_minutes"].fillna(0)
+            for qty, price, date, _, _ in sell_queue:
+                trade_pairs.append({
+                    "symbol": symbol,
+                    "buy_date": None,
+                    "buy_price": 0,
+                    "buy_qty": qty,
+                    "sell_date": date,
+                    "sell_price": price,
+                    "sell_qty": qty,
+                    "pnl": (price-0)*qty,
+                    "holding_period_minutes": 0.0,
+                    "status": "OPEN",
+                })
 
-        manual_pnl = (
-                (df.loc[df["transaction_type"] == "SALE", "price"] * df["quantity"]).sum()
-                - (df.loc[df["transaction_type"] == "BUY", "price"] * df["quantity"]).sum()
-        )
-        realized_pnl = df["pnl"].sum()
-
-        self.logger.info(f"✅ Manual-style P&L (Σ(SALE−BUY)): ₹{manual_pnl:,.2f}")
-        self.logger.info(f"✅ Realized matched P&L (FIFO): ₹{realized_pnl:,.2f}")
-        self.logger.info(f"🧮 Difference: ₹{realized_pnl - manual_pnl:,.2f}")
-
-        # === Export files ===
+        # ================= EXPORTS =================
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Trader-specific filenames
         detailed_file = output_path / f"{trader_name}_paired_trades_detailed.csv"
-        realized_file = output_path / f"{trader_name}_realized_trades_only.csv"
         summary_file = output_path / f"{trader_name}_trade_pairs_summary.csv"
 
-        # raw trade rows
-        df.to_csv(
-            detailed_file,
-            index=False,
-            columns=[
-                "symbol",
-                "trade_date",
-                "transaction_type",
-                "quantity",
-                "price",
-                "pnl",
-                "holding_period_minutes",
-                "trade_value",
-            ],
-        )
-        self.logger.info(f"📊 Detailed trade file saved: {detailed_file}")
+        df.to_csv(detailed_file, index=False)
+        self.logger.info(f"📊 Detailed trades saved: {detailed_file}")
 
-        # realized only
-        df[df["pnl"] != 0].to_csv(realized_file, index=False)
-        self.logger.info(f"💰 Realized trades file saved: {realized_file}")
-
-        # trade pair summary
         summary_df = pd.DataFrame(trade_pairs)
-        summary_df = (
-            summary_df.groupby(
-                ["symbol", "buy_date", "buy_price", "sell_date", "sell_price", "status"],
-                dropna=False,
-                as_index=False,
-            )
-            .agg({"buy_qty": "sum", "sell_qty": "sum", "pnl": "sum"})
-        )
-        summary_df.sort_values(["symbol", "buy_date", "sell_date"], inplace=True)
         summary_df.to_csv(summary_file, index=False)
-        self.logger.info(f"📘 Trade pair summary saved: {summary_file}")
+        self.logger.info(f"📘 Trade pairs saved: {summary_file}")
+
+        realized_pnl = summary_df["pnl"].sum()
+        self.logger.info(f"✅ Realized FIFO PnL: ₹{realized_pnl:,.2f}")
 
         return df
 
@@ -468,60 +550,60 @@ class TradingDataProcessor:
         )
         return daily_stats
 
-    def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Classify each symbol into OPEN / CLOSED positions
-        and each trade row into OPEN-LEG or CLOSED-LEG.
-
-        Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
-        """
-        df = df.copy()
-        df["transaction_type"] = df["transaction_type"].str.upper()
-
-        # ----- Compute net qty at SYMBOL level -----
-        df["_signed_qty"] = df.apply(
-            lambda r: r["quantity"] if r["transaction_type"] == "BUY"
-            else -r["quantity"],
-            axis=1
-        )
-
-        symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
-
-        # merge net qty into df
-        df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
-
-        # ----- Position status -----
-        df["position_status"] = df["symbol_net_qty"].apply(
-            lambda q: "OPEN" if q != 0 else "CLOSED"
-        )
-
-        # ----- Long / Short / Mixed classification -----
-        # long if buys > sells, short if sells > buys
-
-        def classify_direction(g):
-            buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
-            sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
-
-            if buy_qty > sell_qty:
-                return "LONG"
-            elif sell_qty > buy_qty:
-                return "SHORT"
-            else:
-                return "MIXED"  # equal qty or hedged structure
-
-        direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
-        df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
-
-        # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
-        df["row_trade_category"] = df.apply(
-            lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
-            axis=1
-        )
-
-        # cleanup
-        df.drop(columns=["_signed_qty"], inplace=True)
-
-        return df
+    # def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
+    #     """
+    #     Classify each symbol into OPEN / CLOSED positions
+    #     and each trade row into OPEN-LEG or CLOSED-LEG.
+    #
+    #     Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
+    #     """
+    #     df = df.copy()
+    #     df["transaction_type"] = df["transaction_type"].str.upper()
+    #
+    #     # ----- Compute net qty at SYMBOL level -----
+    #     df["_signed_qty"] = df.apply(
+    #         lambda r: r["quantity"] if r["transaction_type"] == "BUY"
+    #         else -r["quantity"],
+    #         axis=1
+    #     )
+    #
+    #     symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
+    #
+    #     # merge net qty into df
+    #     df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+    #
+    #     # ----- Position status -----
+    #     df["position_status"] = df["symbol_net_qty"].apply(
+    #         lambda q: "OPEN" if q != 0 else "CLOSED"
+    #     )
+    #
+    #     # ----- Long / Short / Mixed classification -----
+    #     # long if buys > sells, short if sells > buys
+    #
+    #     def classify_direction(g):
+    #         buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
+    #         sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
+    #
+    #         if buy_qty > sell_qty:
+    #             return "LONG"
+    #         elif sell_qty > buy_qty:
+    #             return "SHORT"
+    #         else:
+    #             return "MIXED"  # equal qty or hedged structure
+    #
+    #     direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
+    #     df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
+    #
+    #     # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
+    #     df["row_trade_category"] = df.apply(
+    #         lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
+    #         axis=1
+    #     )
+    #
+    #     # cleanup
+    #     df.drop(columns=["_signed_qty"], inplace=True)
+    #
+    #     return df
 
     def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -546,6 +628,9 @@ class TradingDataProcessor:
         # --- SYMBOL-LEVEL NET QTY ---
         symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
         df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+
+
+        #--- add the logic to close the net option sell derivatives to 0 if they are out of money , given we have to find the stock spot and compute expiry spot and then on day of expiry we have to make it 0 if the open positions is not closed after expiry date. ---
 
         # --- POSITION STATUS: OPEN/CLOSED ---
         df["position_status"] = df["symbol_net_qty"].apply(

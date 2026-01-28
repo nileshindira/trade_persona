@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, List
 from jinja2 import Environment, FileSystemLoader
-import numbers
 from decimal import Decimal
 import re
 import math
@@ -124,83 +123,24 @@ class ReportGenerator:
         # ----------------------------------------
         return str(obj)
 
-    # --------------------------------------------------------------
-    # GENERATE REPORT DICT
-    # --------------------------------------------------------------
-
-
-    # def generate_report(self, metrics, patterns, analysis, trader_name="Trader"):
-    #
-    #     # Extract original analysis parts
-    #     analysis_raw_text = analysis.get("analysis_text", {})
-    #     summary = analysis.get("summary_data", {})
-    #     web = analysis.get("web_data", {})
-    #
-    #     # Convert Markdown → HTML only once
-    #     analysis_html = {
-    #         k: markdown.markdown(v, extensions=["extra", "tables", "nl2br"])
-    #         for k, v in analysis_raw_text.items()
-    #         if isinstance(v, str)
-    #     }
-    #
-    #     # -----------------------------------------
-    #     #  CLEANED & DEDUPLICATED OUTPUT STRUCTURE
-    #     # -----------------------------------------
-    #     return {
-    #         "metadata": {
-    #             "trader_name": trader_name,
-    #             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    #             "analysis_period": metrics.get("date_range", "N/A"),
-    #         },
-    #
-    #         # EXEC SUMMARY
-    #         "executive_summary": self._exec_summary(metrics, summary),
-    #
-    #         # FULL METRICS (no duplication of summary or KPIs)
-    #         "metrics": metrics,
-    #
-    #         # PATTERNS (single reference instead of two)
-    #         "patterns": patterns,
-    #
-    #         # MARKDOWN → HTML (used for AI insights + text sections)
-    #         "analysis_html": analysis_html,
-    #
-    #         # RAW TEXT (kept minimal, used only if needed)
-    #         "analysis_raw": analysis_raw_text,
-    #
-    #         # Clean web data
-    #         "web": {
-    #             "kpis": web.get("kpis", {}),
-    #             "persona_scores": web.get("persona_scores", {}),
-    #             "charts": web.get("charts", {}),
-    #         },
-    #
-    #         # AI INSIGHTS (directly mapped to analysis_html, not duplicated)
-    #         "ai_insights": analysis_html,
-    #
-    #         # RECOMMENDATIONS extracted from markdown
-    #         "recommendations": self._format_recommendations(
-    #             analysis_raw_text.get("recommendations", "")
-    #         ),
-    #
-    #         # Risk score (functional)
-    #         "risk_score": self._risk_score(metrics, patterns),
-    #     }
 
     def generate_report(self, metrics, patterns, analysis, trader_name="Trader"):
         analysis_text = analysis.get("analysis_text", {})
         summary = analysis.get("summary_data", {})
         web = analysis.get("web_data", {})
 
-        # Convert markdown → HTML
-        analysis_html = {
-            k: markdown.markdown(v, extensions=["extra", "tables", "nl2br"])
-            for k, v in analysis_text.items()
-            if isinstance(v, str)
-        }
-        print("Analysis HTML")
-        print(analysis_html)
+        # Convert markdown → HTML (preserve dicts/lists)
+        analysis_html = {}
+        for k, v in analysis_text.items():
+            if isinstance(v, str):
+                analysis_html[k] = markdown.markdown(v, extensions=["extra", "tables", "nl2br"])
+            else:
+                analysis_html[k] = v
 
+        hard_flags = web.get("hard_flags", {})
+        risk_severity = web.get("risk_severity", "LOW")
+
+        # Construct report with ALL possible keys to ensure compatibility
         return {
             "metadata": {
                 "trader_name": trader_name,
@@ -209,14 +149,31 @@ class ReportGenerator:
             },
             "executive_summary": self._exec_summary(metrics, summary),
             "detailed_metrics": metrics,
+            "metrics": metrics,
             "patterns": patterns,
-            "analysis_text": analysis_html,
-            "summary_data": summary,
-            "web_data": web,
-            "risk_score": self._risk_score(metrics, patterns),
             "detected_patterns": patterns,
-            "ai_analysis": analysis_html,
-            "recommendations": self._format_recommendations(analysis_text.get("recommendations", "")),
+            "analysis_text": analysis_html,
+            "analysis_html": analysis_html,
+            "ai_insights": analysis_html,
+            "analysis_raw": analysis_text,
+            "summary_data": summary,
+            "hard_flags": hard_flags,
+            "risk_severity": risk_severity,
+            "risk_score": self._risk_score(metrics, patterns),
+            "web_data": web,
+            "web": web,
+
+            # Derived / Specific Web Data
+            "recommendations": self._format_recommendations(
+                analysis_text.get("recommendations", "")
+            ),
+            
+            # Combine positions for JS table
+            "positions_data": (
+                metrics.get("positions", []) + 
+                metrics.get("closed_positions", [])
+            ),
+
             "all_kpis": web.get("kpis", {}),
             "persona_scores": web.get("persona_scores", {}),
             "charts_data": web.get("charts", {}),
@@ -297,5 +254,15 @@ def export_html_from_json(json_path, html_path, base_dir=None):
 if __name__ == "__main__":
     with open("/home/system-4/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
         data = json.load(f)
+    
+    # Patch for missing context_performance in older JSONs
+    if "analysis_text" in data and "context_performance" not in data["analysis_text"]:
+        data["analysis_text"]["context_performance"] = {
+            "event": {"verdict": "N/A", "reasoning": "Not analyzed"},
+            "news": {"verdict": "N/A", "reasoning": "Not analyzed"},
+            "volume": {"verdict": "N/A", "reasoning": "Not analyzed"},
+            "trend": {"verdict": "N/A", "reasoning": "Not analyzed"}
+        }
+
     gen = ReportGenerator()
     gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")

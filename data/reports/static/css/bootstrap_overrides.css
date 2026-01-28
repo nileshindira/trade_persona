@@ -265,6 +265,41 @@
     transition: max-height none !important;
 }
 
+.risk-flags {
+  border-left: 6px solid #dc3545;
+  background: #fff5f5;
+  padding: 16px;
+  margin: 20px 0;
+}
+
+.risk-severity {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.risk-severity.high,
+.risk-severity.critical {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.risk-severity.medium {
+  color: #f0ad4e;
+}
+
+.risk-severity.low {
+  color: #28a745;
+}
+
+.flag-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.flag-item {
+  margin: 6px 0;
+  font-weight: 600;
+}
 
 /*css for tips tool */
 .tooltip-large .tooltip-inner {

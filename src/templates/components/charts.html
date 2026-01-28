@@ -1,55 +1,55 @@
-            <!-- Charts Data -->
-          <section id="pnl_timeline" class="mt-4">
-            {% if report.web_data.charts %}
-            <div class="card p-4">
+<!-- Charts Data -->
+<section id="pnl_timeline" class="mt-4">
+  {% if report.web_data.charts %}
+  <div class="card p-4">
 
 
-              <!-- P&L Timeline -->
-              {% if report.web_data.charts.pnl_timeline %}
-              <div class="mb-4">
-                <h5>P&L Timeline</h5>
-                <div class="chart-container" style="height: 300px; position: relative;">
+    <!-- P&L Timeline -->
+    {% if report.web_data.charts.pnl_timeline %}
+    <div class="mb-4">
+      <h5>P&L Timeline</h5>
+      <div class="chart-container" style="height: 300px; position: relative;">
 
-                <canvas id="pnlTimelineChart" height="300"></canvas>
-                </div>
-              </div>
-              {% endif %}
-             </div>
+        <canvas id="pnlTimelineChart" height="300"></canvas>
+      </div>
+    </div>
+    {% endif %}
+  </div>
 
-                          <div class="card p-4">
-
-
-              <!-- P&L Timeline -->
-              {% if report.web_data.charts.nifty_pnl_timeline %}
-              <div class="mb-4">
-                <h5>NIFTY Timeline</h5>
-                <div class="chart-container" style="height: 300px; position: relative;">
-
-                <canvas id="niftyTimelineChart" height="300"></canvas>
-                </div>
-              </div>
-              {% endif %}
-             </div>
-
-            {% endif %}
-          </section>
+  <div class="card p-4">
 
 
+    <!-- P&L Timeline -->
+    {% if report.web_data.charts.nifty_pnl_timeline %}
+    <div class="mb-4">
+      <h5>NIFTY Timeline</h5>
+      <div class="chart-container" style="height: 300px; position: relative;">
 
-              <!-- Instrument Distribution -->
-          <section id="instrument_distribution" class="mt-4">
+        <canvas id="niftyTimelineChart" height="300"></canvas>
+      </div>
+    </div>
+    {% endif %}
+  </div>
 
-  <div class="d-flex gap-3">   <!-- NEW flex wrapper -->
+  {% endif %}
+</section>
+
+
+
+<!-- Instrument Distribution -->
+<section id="instrument_distribution" class="mt-4">
+
+  <div class="d-flex gap-3"> <!-- NEW flex wrapper -->
 
     <!-- Card 1 -->
     <div class="card p-4 flex-fill" style="width:50%;">
       <div class="mb-4">
         {% if report.web_data.charts.instrument_distribution %}
-        {% endif %}
-        <h5>Segment Distribution</h5>
+        <h5>Instrument Distribution</h5>
         <div class="pie-chart-container" style="height: 250px; position: relative;">
           <canvas id="instrumentChart" height="200"></canvas>
         </div>
+        {% endif %}
       </div>
     </div>
 
@@ -57,8 +57,7 @@
     <div class="card p-4 flex-fill" style="width:50%;">
       <div class="mb-4">
         {% if report.web_data.charts.segment_distribution %}
-        {% endif %}
-        <h5>Instrument Distribution</h5>
+        <h5>Segment Distribution</h5>
         <div class="d-flex justify-content-between">
           <select id="segmentFilter" class="form-select" style="width:160px;">
             <option value="10">Top 10</option>
@@ -71,6 +70,7 @@
         <div class="pie-chart-container" style="height: 250px; position: relative;">
           <canvas id="segmentChart" height="200"></canvas>
         </div>
+        {% endif %}
       </div>
     </div>
 
@@ -78,40 +78,42 @@
 
 </section>
 
-              <!-- Persona Scores -->
-          <section id="persona_scores" class="page-section mt-4">
-              {% if report.web_data.persona_scores %}
-            <div class="card p-4">
-              <h4 class="mb-3">Trading Persona Scores</h4>
-              <div class="row">
-                <div class="col-md-6">
-                  <canvas id="personaRadarChart" height="300"></canvas>
+<!-- Persona Scores -->
+<section id="persona_scores" class="page-section mt-4">
+  {% if report.web_data.persona_scores %}
+  <div class="card p-4">
+    <h4 class="mb-3">Trading Persona Scores</h4>
+    <div class="row">
+      <div class="col-md-6">
+        <canvas id="personaRadarChart" height="300"></canvas>
+      </div>
+      <div class="col-md-6">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Trait</th>
+              <th>Score</th>
+              <th>Visual</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for trait, score in report.web_data.persona_scores.items() %}
+            <tr>
+              <td><strong>{{ trait.replace('_', ' ').title() }}</strong></td>
+              <td>{{ '%.2f'|format(score * 100) }}%</td>
+              <td>
+                <div class="progress" style="height:20px">
+                  <div class="progress-bar"
+                    style="width:{{ score * 100 }}%;background:linear-gradient(90deg,var(--primary),var(--accent))">
+                  </div>
                 </div>
-                <div class="col-md-6">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th>Trait</th>
-                        <th>Score</th>
-                        <th>Visual</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for trait, score in report.web_data.persona_scores.items() %}
-                      <tr>
-                        <td><strong>{{ trait.replace('_', ' ').title() }}</strong></td>
-                        <td>{{ '%.2f'|format(score * 100) }}%</td>
-                        <td>
-                          <div class="progress" style="height:20px">
-                            <div class="progress-bar" style="width:{{ score * 100 }}%;background:linear-gradient(90deg,var(--primary),var(--accent))"></div>
-                          </div>
-                        </td>
-                      </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-          </section>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>

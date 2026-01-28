@@ -2,6 +2,7 @@
 LLM Analyzer Module
 Integrates with Ollama for AI-powered analysis
 """
+import os
 
 import requests
 import json
@@ -10,6 +11,12 @@ import logging
 import re
 import pandas as pd
 import numpy as np
+from pathlib import Path;
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 class OllamaAnalyzer:
     """LLM-based analysis using Ollama"""
 
@@ -59,8 +66,30 @@ class OllamaAnalyzer:
             # 4. Technical Alignment
             'avg_total_score': metrics.get('avg_total_score', 0),
             'high_score_win_rate_pct': metrics.get('high_score_win_rate', 0),
+
+            # 5. NEW: Contextual Performance Metrics
+            'trend_alignment_score': metrics.get('trend_alignment_score', 0),
+            'trend_aligned_win_rate': metrics.get('trend_aligned_win_rate', 0),
+            'event_trading_count': metrics.get('event_trading_count', 0),
+            'event_trading_win_rate': metrics.get('event_trading_win_rate', 0),
+            'event_trading_pnl': metrics.get('event_trading_pnl', 0),
+            'news_trading_count': metrics.get('news_trading_count', 0),
+            'news_trading_win_rate': metrics.get('news_trading_win_rate', 0),
+            'news_trading_pnl': metrics.get('news_trading_pnl', 0),
+            'high_volume_trading_count': metrics.get('high_volume_trading_count', 0),
+            'high_volume_trading_win_rate': metrics.get('high_volume_trading_win_rate', 0),
+            'high_volume_trading_pnl': metrics.get('high_volume_trading_pnl', 0),
         }
         return kpis
+
+    def _compute_verdict_ceiling(self, hard_flags: Dict) -> str:
+        if hard_flags.get("negative_expectancy"):
+            return "AVERAGE"
+        if hard_flags.get("capital_at_risk_high"):
+            return "GOOD"
+        if hard_flags.get("severe_emotional_trading"):
+            return "AVERAGE"
+        return "EXCELLENT"
 
     def _prepare_chart_data(self, metrics: Dict,patterns: Dict, df: pd.DataFrame) -> Dict:
         """
@@ -150,12 +179,17 @@ class OllamaAnalyzer:
 
         # Prepare context (NOW includes DataFrame)
         context = self._prepare_context(metrics, patterns, df_small)
-
+        Path("chatgpt_context.json").write_text(json.dumps(context, indent=2, default=str), encoding="utf-8")
+        Path("df_context.json").write_text(
+            json.dumps(df.to_dict(orient="records"), indent=2, default=str),
+            encoding="utf-8"
+        )
         self.logger.info("1. Generate text analysis from LLM")
         analysis_text = {
             'trader_profile': self._analyze_trader_profile(context),
             'risk_assessment': self._analyze_risk(context),
             'behavioral_insights': self._analyze_behavior(context),
+            'context_performance': self._analyze_context_performance(context),  # NEW
             'recommendations': self._generate_recommendations(context),
             'performance_summary': self._summarize_performance(context),
         }
@@ -170,15 +204,17 @@ class OllamaAnalyzer:
 
         self.logger.info("Final Output for API/Web Service")
         analysis = {
-            "analysis_text": analysis_text,        # LLM generated text blocks (for display)
-            "summary_data": structured_summary,   # Extracted LLM verdict/score (for dashboard)
-            "web_data": {                         # **NEW BLOCK: Clean, structured data for the UI**
-                "kpis": web_kpis,                 # Key single-value metrics (Section 1 & 2)
-                "charts": web_charts,             # Arrays for charts (Section 3)
-                "persona_scores": metrics.get("persona_traits", {}), # (Section 4)
-                "raw_patterns": patterns          # Full pattern detail
+            "analysis_text": analysis_text,
+            "summary_data": structured_summary,
+            "web_data": {
+                "kpis": web_kpis,
+                "charts": web_charts,
+                "persona_scores": metrics.get("persona_traits", {}),
+                "hard_flags": metrics.get("_hard_flags", {}),  # 👈 STEP 6
+                "raw_patterns": patterns
             }
         }
+
         return analysis
 
     # =========================================================
@@ -240,6 +276,14 @@ class OllamaAnalyzer:
     - FOMO Trading: {patterns.get('fomo_trading', {}).get('detected', False)}
     - Overconfidence: {patterns.get('overconfidence', {}).get('detected', False)}
     - Weekend Exposure: {patterns.get('weekend_exposure', {}).get('detected', False)}
+
+    BEHAVIORAL CONTEXT (NEW):
+    - Trend Alignment Score: {metrics.get('trend_alignment_score', 0):.1f}% (Win Rate: {metrics.get('trend_aligned_win_rate', 0):.1f}%)
+    - Event Trading: {metrics.get('event_trading_count', 0)} trades (Win Rate: {metrics.get('event_trading_win_rate', 0):.1f}%, PnL: ₹{metrics.get('event_trading_pnl', 0):,.2f})
+    - News Trading: {metrics.get('news_trading_count', 0)} trades (Win Rate: {metrics.get('news_trading_win_rate', 0):.1f}%, PnL: ₹{metrics.get('news_trading_pnl', 0):,.2f})
+    - News Categories: {metrics.get('news_category_breakdown', 'N/A')}
+    - High Volume Trading: {metrics.get('high_volume_trading_count', 0)} trades (Win Rate: {metrics.get('high_volume_trading_win_rate', 0):.1f}%, PnL: ₹{metrics.get('high_volume_trading_pnl', 0):,.2f})
+    - Volume Volatility: {metrics.get('volume_volatility', 0):.2f} (High = Erratic Sizing)
     """
 
         # === NEW SECTION: Include Persona Metrics ===
@@ -268,6 +312,19 @@ class OllamaAnalyzer:
     {safe_metrics}
     {safe_patterns}
     """
+        hard_flags = metrics.get("_hard_flags", {})
+
+        context += f"""
+        HARD RISK FLAGS (NON-NEGOTIABLE):
+        - Capital at Risk High: {hard_flags.get('capital_at_risk_high')}
+        - Overtrading: {hard_flags.get('overtrading')}
+        - Negative Expectancy: {hard_flags.get('negative_expectancy')}
+        - Emotional Instability: {hard_flags.get('emotional_instability')}
+
+        IMPORTANT:
+        Do NOT override these facts in narrative.
+        Align conclusions strictly with these flags.
+        """
 
         return context
 
@@ -309,129 +366,459 @@ class OllamaAnalyzer:
     # Ollama API Interaction
     # =========================================================
     def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
-        """Call Ollama API"""
+        """Call Ollama or OpenRouter based on config switch"""
         try:
+            use_ollama = self.config.get("llm_provider", {}).get("use_ollama", 1)
+            print(use_ollama)
+            # ======================================================
+            # OPTION 1: OLLAMA (existing behavior – untouched logic)
+            # ======================================================
+            if use_ollama == 1:
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json={
+                        "model": self.model,
+                        "prompt": prompt,
+                        "system": system_prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": self.config['ollama']['temperature'],
+                            "top_p": self.config['ollama']['top_p']
+                        }
+                    },
+                    timeout=120
+                )
+
+                if response.status_code == 200:
+                    return response.json().get("response", "")
+                else:
+                    self.logger.error(f"Ollama API error: {response.text}")
+                    return "Error generating analysis"
+
+            # ======================================================
+            # OPTION 2: OPENROUTER
+            # ======================================================
+            # ======================================================
+            # OPENROUTER PATH (Python equivalent of your JS code)
+            # ======================================================
+            headers = {
+                "Authorization": f"Bearer {self.config['openrouter']['api_key']}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost",
+                "X-Title": "Trade Persona Analyzer"
+            }
+
+            payload = {
+                "model": self.config["openrouter"]["model"],  # e.g. openai/gpt-oss-20b
+                "messages": [
+                    {"role": "system", "content": system_prompt} if system_prompt else None,
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.config["openrouter"]["temperature"],
+                "top_p": self.config["openrouter"]["top_p"],
+                "stream": False
+            }
+
+            payload["messages"] = [m for m in payload["messages"] if m]
+
             response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "system": system_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": self.config['ollama']['temperature'],
-                        "top_p": self.config['ollama']['top_p']
-                    }
-                },
+                self.config["openrouter"]["base_url"],
+                headers=headers,
+                json=payload,
                 timeout=120
             )
 
             if response.status_code == 200:
-                return response.json().get('response', '')
+                data = response.json()
+
+                # Optional: log reasoning tokens (JS equivalent)
+                usage = data.get("usage", {})
+                if usage:
+                    self.logger.info(
+                        f"OpenRouter usage | prompt={usage.get('prompt_tokens')} "
+                        f"completion={usage.get('completion_tokens')} "
+                        f"reasoning={usage.get('reasoning_tokens')}"
+                    )
+
+                return data["choices"][0]["message"]["content"]
+
             else:
-                self.logger.error(f"Ollama API error: {response.text}")
+                self.logger.error(f"OpenRouter API error: {response.text}")
                 return "Error generating analysis"
 
         except Exception as e:
-            self.logger.error(f"Error calling Ollama: {str(e)}")
-            return "Error generating analysis - Ollama may not be running"
+            self.logger.error(f"Error calling LLM provider: {str(e)}")
+        return "Error generating analysis - LLM provider unavailable"
 
     # =========================================================
     # Analysis Sections
     # =========================================================
     def _analyze_trader_profile(self, context: str) -> str:
-        """Analyze trader profile"""
+        """Analyze trader profile with evidence-based classification"""
+        # Extract metrics for prompt enhancement
+        metrics = {}
+        try:
+            # Parse context to extract key metrics (basic extraction)
+            import re
+            metrics['discipline_score'] = re.search(r'Discipline Score: ([\d.]+)', context)
+            metrics['emotional_control'] = re.search(r'Emotional Control: ([\d.]+)', context)
+            metrics['risk_appetite'] = re.search(r'Risk Appetite: ([\d.]+)', context)
+            
+            discipline = float(metrics['discipline_score'].group(1)) if metrics['discipline_score'] else 0
+            emotional = float(metrics['emotional_control'].group(1)) if metrics['emotional_control'] else 0
+            risk_app = float(metrics['risk_appetite'].group(1)) if metrics['risk_appetite'] else 0
+        except:
+            discipline = emotional = risk_app = 0
+        
         prompt = f"""
-Based on the following trading data, provide a detailed trader profile classification.
-Include:
-1. Trader type (scalper, day trader, swing trader, etc.)
-2. Risk appetite (conservative, moderate, aggressive)
-3. Trading style characteristics
-4. How the persona traits reflect in actual trade behavior
-Ensure to keep response in simple interactive english for layman trader in india. 
+You are analyzing a trader's profile based on comprehensive trading data.
 
 {context}
 
-Provide a concise but comprehensive trader profile (200-300 words):
+TASK: Classify this trader's profile with EVIDENCE-BASED reasoning.
+
+CLASSIFICATION CRITERIA:
+- **Scalper**: Avg holding < 30 min, 20+ trades/day
+- **Day Trader**: Avg holding 30min-6hrs, 5-20 trades/day
+- **Swing Trader**: Avg holding 1-5 days, 1-5 trades/day
+- **Position Trader**: Avg holding > 5 days, < 1 trade/day
+
+RISK APPETITE CRITERIA:
+- **Conservative**: Max drawdown < 10%, position size < 5% capital
+- **Moderate**: Max drawdown 10-20%, position size 5-10% capital
+- **Aggressive**: Max drawdown > 20%, position size > 10% capital
+
+OUTPUT FORMAT:
+1. **Primary Classification**: [Type] with [Risk Appetite]
+   - Evidence: [Cite specific metrics from the data]
+   - Confidence: [High/Medium/Low]
+
+2. **Persona Trait Alignment**:
+   - Discipline Score ({discipline:.1f}/100): [How it manifests in trades]
+   - Emotional Control ({emotional:.1f}/100): [Specific examples from patterns]
+   - Risk Appetite ({risk_app:.1f}/100): [Position sizing patterns]
+
+3. **Trading Style Characteristics** (3-5 bullet points with numbers):
+   - Example: "Prefers options trading (78% of trades) over equity (22%)"
+
+4. **Behavioral Signature** (1-2 sentences):
+   - What makes this trader unique based on the data?
+
+CONSTRAINTS:
+- Use simple English for Indian retail traders
+- Cite specific numbers from the data
+- Total length: 250-350 words
+- Be direct and honest
+
+Provide the trader profile:
 """
-        system_prompt = "You are an expert financial analyst specializing in trading behavior analysis."
+        system_prompt = "You are an expert financial analyst specializing in trading behavior analysis. Provide evidence-based classifications with specific metrics."
         self.logger.info("1.1 Generate _analyze_trader_profile from LLM")
         raw = self._call_ollama(prompt, system_prompt)
         return self._beautify_recommendations_html(raw)
 
     def _analyze_risk(self, context: str) -> str:
-        """Analyze risk profile"""
+        """Analyze risk profile with quantified assessment"""
+        # Extract metrics for prompt enhancement
+        try:
+            import re
+            sharpe_match = re.search(r'Sharpe Ratio: ([-\d.]+)', context)
+            sortino_match = re.search(r'Sortino Ratio: ([-\d.]+)', context)
+            dd_match = re.search(r'Max Drawdown: ([\d.]+)%', context)
+            
+            sharpe = float(sharpe_match.group(1)) if sharpe_match else 0
+            sortino = float(sortino_match.group(1)) if sortino_match else 0
+            max_dd = float(dd_match.group(1)) if dd_match else 0
+        except:
+            sharpe = sortino = max_dd = 0
+        
         prompt = f"""
-Based on the following trading metrics and persona traits, provide a risk assessment.
+You are conducting a risk assessment for a trader.
 
 {context}
 
-Analyze:
-1. Overall risk level (LOW/MEDIUM/HIGH/VERY HIGH)
-2. Key risk factors
-3. Risk-adjusted performance
-4. Potential vulnerabilities based on persona behavior
-Ensure to keep response in simple interactive english for layman trader in india
-Provide detailed risk analysis (200-300 words):
+TASK: Provide a QUANTIFIED risk assessment with actionable insights.
+
+RISK LEVEL CRITERIA:
+- **LOW**: Max DD < 10%, Sharpe > 1.5, Win Rate > 60%, No emotional patterns
+- **MEDIUM**: Max DD 10-20%, Sharpe 0.5-1.5, Win Rate 50-60%, Minor emotional patterns
+- **HIGH**: Max DD 20-35%, Sharpe 0-0.5, Win Rate 40-50%, Moderate emotional patterns
+- **VERY HIGH**: Max DD > 35%, Sharpe < 0, Win Rate < 40%, Severe emotional patterns
+
+OUTPUT FORMAT:
+
+1. **Overall Risk Level**: [LOW/MEDIUM/HIGH/VERY HIGH]
+   - Justification: [Which criteria triggered this level?]
+   - Current Metrics: Sharpe={sharpe:.2f}, Sortino={sortino:.2f}, Max DD={max_dd:.1f}%
+
+2. **Top 3 Risk Factors** (ranked by severity):
+   🔴 **CRITICAL**: [Factor] - [Impact in ₹ or %]
+   🟡 **HIGH**: [Factor] - [Impact in ₹ or %]
+   🟢 **MEDIUM**: [Factor] - [Impact in ₹ or %]
+
+3. **Risk-Adjusted Performance Analysis**:
+   - Sharpe Ratio interpretation: [What does {sharpe:.2f} mean for this trader?]
+   - Sortino Ratio interpretation: [What does {sortino:.2f} mean?]
+   - Max Drawdown impact: [How long to recover from {max_dd:.1f}% loss?]
+
+4. **Persona-Based Vulnerabilities**:
+   - Link emotional control and discipline scores to specific risks
+   - Cite examples from detected patterns
+
+5. **Risk Mitigation Priority**:
+   - **Do First**: [Most urgent action with expected risk reduction]
+   - **Do Next**: [Second priority]
+
+CONSTRAINTS:
+- Use simple English for Indian retail traders
+- Quantify every risk (₹ or %)
+- Total length: 250-350 words
+- Be direct about vulnerabilities
+
+Provide the risk assessment:
 """
-        system_prompt = "You are a risk management expert analyzing trading portfolios."
+        system_prompt = "You are a risk management expert analyzing trading portfolios. Focus on quantified risk metrics and actionable mitigation strategies."
         self.logger.info("1.2 Generate _analyze_risk from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _analyze_behavior(self, context: str) -> str:
-        """Analyze behavioral patterns"""
+        """Analyze behavioral patterns with quantified impact"""
         prompt = f"""
-Based on the detected patterns and persona traits, provide behavioral insights.
+You are analyzing trading behavior patterns.
 
 {context}
 
-Focus on:
-1. Psychological tendencies
-2. Emotional trading signs
-3. Discipline issues
-4. Positive behaviors and consistency traits
-Ensure to keep response in simple interactive english for layman trader in india
-Provide behavioral analysis (200-300 words):
+TASK: Identify behavioral patterns with FREQUENCY, SEVERITY, and P&L IMPACT.
+
+OUTPUT FORMAT:
+
+1. **Detected Negative Patterns** (for each pattern detected in the data):
+   - **Pattern Name**: [e.g., Revenge Trading]
+   - **Frequency**: [X times out of Y trades = Z%]
+   - **P&L Impact**: [Estimated ₹ lost due to this pattern]
+   - **Severity**: [Low/Medium/High/Critical]
+   - **Example Trade**: [Cite specific date, symbol, loss amount from data]
+   - **Persona Link**: [Which trait score explains this? Cite the score]
+
+2. **Detected Positive Patterns** (if any):
+   - **Pattern Name**: [e.g., Disciplined Exits]
+   - **Frequency**: [X times out of Y trades = Z%]
+   - **P&L Impact**: [Estimated ₹ gained due to this pattern]
+   - **Example Trade**: [Cite specific date, symbol, profit amount]
+
+3. **Contextual Trading Performance** (NEW):
+   - **Market Trend Alignment**: [Are they fighting the Nifty trend or riding it? Cite 'Trend Alignment Score']
+   - **Event/News Efficiency**: [Do they profit from volatility (events/news) or get trapped? Cite Win Rates for Event/News]
+   - **Volume Handling**: [Do they size up correctly on high volume days? Cite High Volume PnL]
+
+4. **Psychological Profile**:
+   - **Primary Tendency**: [Based on most frequent pattern]
+   - **Emotional Triggers**: [What causes bad trades? Cite examples from data]
+   - **Discipline Breakdown Points**: [When does discipline fail? Cite times/situations]
+
+5. **Consistency Analysis**:
+   - Link consistency score to actual trading behavior
+   - Evidence from win/loss streaks in the data
+
+CONSTRAINTS:
+- Every claim must have a number (frequency, amount, percentage)
+- Cite at least 2 specific trade examples with dates
+- Link patterns to persona trait scores
+- Use simple English for Indian retail traders
+- Total length: 300-400 words
+
+Provide the behavioral analysis:
 """
-        system_prompt = "You are a trading psychology expert analyzing trader behavior."
+        system_prompt = "You are a trading psychology expert analyzing trader behavior. Focus on data-driven insights with specific examples."
         self.logger.info("1.3 Generate _analyze_behavior from LLM")
         return self._call_ollama(prompt, system_prompt)
 
-    def _generate_recommendations(self, context: str) -> str:
-        """Generate actionable recommendations"""
+    def _analyze_context_performance(self, context: str) -> Dict:
+        """Analyze contextual performance (Events, News, Trend, Volume) returning STRUCTURED JSON"""
         prompt = f"""
-Based on the trading metrics, patterns, and persona traits, provide specific, actionable recommendations.
+        You are a high-performance trading psychologist analyzing a trader's behavior in specific contexts.
+
+        {context}
+
+        TASK: Interpret the 'Contextual Trading Performance' metrics.
+        
+        CRITICAL INSTRUCTIONS:
+        1. **Do NOT just repeat the numbers** (The user can see the Win Rate/PnL). 
+        2. **Explain the BEHAVIOR**: Why are they winning/losing in this context?
+        3. **Map to PERSONA**: Link the observation to the identified 'Persona Type' and 'Traits' (Discipline, Patience, etc.).
+           - Example: "As a Momentum Chaser, they struggle in low volume because..."
+           - Example: "High Event profit confirms their high Risk Appetite..."
+
+        Return a STRICT JSON object with no markdown formatting.
+
+        JSON STRUCTURE:
+        {{
+            "event": {{
+                "verdict": "Psychological/Behavioral Title (2-3 words)",
+                "reasoning": "Insightful explanation linking performance to their specific Persona and traits. (Max 2 sentences)"
+            }},
+            "news": {{
+                "verdict": "Verdict Title",
+                "reasoning": "Insight linking to Persona."
+            }},
+            "volume": {{
+                "verdict": "Verdict Title",
+                "reasoning": "Insight linking to Persona."
+            }},
+            "trend": {{
+                "verdict": "Verdict Title",
+                "reasoning": "Insight linking to Persona."
+            }}
+        }}
+
+        JSON OUTPUT:
+        """
+        system_prompt = "You are a data-driven trading analyst. Output only valid JSON."
+        self.logger.info("1.3.5 Generate _analyze_context_performance schema from LLM")
+        
+        raw_response = self._call_ollama(prompt, system_prompt)
+        
+        # Parse JSON
+        import json
+        import re
+        try:
+            # Clean potential markdown code blocks
+            clean_json = re.sub(r"```json|```", "", raw_response).strip()
+            return json.loads(clean_json)
+        except Exception as e:
+            self.logger.error(f"Failed to parse context JSON: {e}")
+            # Fallback structure
+            return {
+                "event": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "news": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "volume": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "trend": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."}
+            }
+
+    def _generate_recommendations(self, context: str) -> str:
+        """Generate actionable recommendations with numerical targets"""
+        prompt = f"""
+You are a professional trading coach creating an ACTION PLAN.
 
 {context}
 
-Provide:
-1. Immediate actions (next 1-2 weeks)
-2. Short-term improvements (1-3 months)
-3. Long-term strategy changes
-4. Specific metrics or traits to improve
-Ensure to keep response in simple interactive english for layman trader in india
-Format as bullet points with clear action items:
+TASK: Provide SPECIFIC, MEASURABLE, ACHIEVABLE recommendations.
+
+CRITICAL RULES:
+1. Every recommendation MUST have a NUMBER (from X to Y)
+2. Every recommendation MUST have a SUCCESS METRIC
+3. Prioritize by IMPACT (which will improve P&L most?)
+4. Personalize based on PERSONA TRAITS
+
+OUTPUT FORMAT:
+
+## 🔴 CRITICAL ACTIONS (Do in Next 1-2 Weeks)
+**Priority 1: [Action Title]**
+- **Current State**: [Metric] = [Current Value]
+- **Target**: [Metric] = [Target Value]
+- **Why**: [Expected P&L impact or risk reduction in ₹ or %]
+- **How**: [Specific steps: 1, 2, 3]
+- **Success Metric**: [How to measure progress]
+- **Persona Link**: [Which trait needs improvement? Current score: X/100]
+
+**Priority 2: [Action Title]**
+[Same format]
+
+## 🟡 IMPORTANT ACTIONS (Do in Next 1-3 Months)
+**Action 1: [Title]**
+- **Current → Target**: [X → Y]
+- **Expected Impact**: [₹ or % improvement]
+- **Steps**: [1, 2, 3]
+
+**Action 2: [Title]**
+[Same format]
+
+## 🟢 LONG-TERM STRATEGY (3-6 Months)
+**Strategic Change 1: [Title]**
+- **Current Approach**: [Description]
+- **Recommended Approach**: [Description]
+- **Why**: [Rationale based on persona analysis]
+
+## 📊 PERSONA DEVELOPMENT PLAN
+Based on persona scores from the data:
+- **Discipline**: [Specific exercise to improve this trait]
+- **Emotional Control**: [Specific exercise to improve this trait]
+- **Patience**: [Specific exercise to improve this trait]
+
+## ✅ QUICK WINS (Easiest to Implement)
+1. [Action with immediate impact - cite expected ₹ benefit]
+2. [Action with immediate impact - cite expected ₹ benefit]
+
+CONSTRAINTS:
+- EVERY recommendation must have "From X to Y" format
+- Prioritize by P&L impact (cite expected ₹ improvement)
+- Use simple English for Indian retail traders
+- Total length: 400-500 words
+- Be brutally honest about what needs to change
+
+Provide the action plan:
 """
-        system_prompt = "You are a professional trading coach providing improvement strategies."
+        system_prompt = "You are a professional trading coach providing improvement strategies. Focus on specific, measurable actions with clear numerical targets."
         self.logger.info("1.4 Generate _generate_recommendations from LLM")
         return self._call_ollama(prompt, system_prompt)
 
     def _summarize_performance(self, context: str) -> str:
-        """Summarize overall performance"""
+        """Summarize overall performance with improvement path"""
         prompt = f"""
-Provide an executive summary of the trading performance.
+You are providing an executive performance review.
 
 {context}
 
-Include:
-1. Overall verdict (Excellent/Good/Average/Poor/Critical)
-2. Key strengths
-3. Major weaknesses
-4. Bottom-line assessment integrating persona analysis
-Ensure to keep response in simple interactive english for layman trader in india
-Be direct and honest in assessment (150-200 words):
+TASK: Deliver a DIRECT, HONEST verdict with clear improvement path.
+
+VERDICT CRITERIA:
+- **EXCELLENT**: Sharpe > 1.5, Win Rate > 60%, Max DD < 10%, No critical patterns
+- **GOOD**: Sharpe 1-1.5, Win Rate 55-60%, Max DD 10-15%, Minor patterns
+- **AVERAGE**: Sharpe 0.5-1, Win Rate 50-55%, Max DD 15-25%, Moderate patterns
+- **POOR**: Sharpe 0-0.5, Win Rate 40-50%, Max DD 25-35%, Severe patterns
+- **CRITICAL**: Sharpe < 0, Win Rate < 40%, Max DD > 35%, Critical patterns
+
+OUTPUT FORMAT:
+
+## 📊 OVERALL VERDICT: [EXCELLENT/GOOD/AVERAGE/POOR/CRITICAL]
+
+**Justification**: [Which criteria triggered this verdict? Cite specific metrics]
+
+**Hard Flags Consideration**: [If any hard flags exist in the data, explain how they influenced the verdict]
+
+## ✅ TOP 3 STRENGTHS
+1. **[Strength]**: [Quantified evidence from data]
+2. **[Strength]**: [Quantified evidence from data]
+3. **[Strength]**: [Quantified evidence from data]
+
+## ❌ TOP 3 WEAKNESSES
+1. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
+2. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
+3. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
+
+## 🎯 PATH TO NEXT LEVEL
+**To move from [current verdict] to [next level], you need to:**
+1. [Specific metric improvement: From X to Y]
+2. [Specific metric improvement: From X to Y]
+3. [Specific behavioral change with measurable target]
+
+## 🧠 PERSONA ASSESSMENT
+**Your Trading Personality**: [Based on persona type from data]
+- **Alignment**: [Are your traits helping or hurting performance?]
+- **Key Insight**: [1-2 sentences on persona-performance relationship]
+
+## 💰 BOTTOM LINE
+[2-3 sentences: Direct, honest assessment. Would you invest with this trader? Why or why not?]
+
+CONSTRAINTS:
+- Be brutally honest
+- Use simple English for Indian retail traders
+- Cite specific numbers from the data
+- Total length: 200-300 words
+
+Provide the executive summary:
 """
-        system_prompt = "You are a senior financial advisor providing performance reviews."
+        system_prompt = "You are a senior financial advisor providing performance reviews. Be direct and honest in your assessment."
         self.logger.info("1.5 Generate _summarize_performance from LLM")
 
         return self._call_ollama(prompt, system_prompt)
@@ -442,7 +829,9 @@ Be direct and honest in assessment (150-200 words):
     def _extract_structured_summary(self, sections: Dict, metrics: Dict, patterns: Dict) -> Dict:
         """Extract structured summary (risk level, verdict, key strengths/weaknesses)"""
 
-        text = " ".join(sections.values())
+        # Only join string sections to avoid TypeError with dicts (like context_performance)
+        text_parts = [v for k, v in sections.items() if isinstance(v, str)]
+        text = " ".join(text_parts)
 
         summary = {}
 
@@ -480,5 +869,11 @@ Be direct and honest in assessment (150-200 words):
         # Simple performance score for dashboards
         score_map = {"EXCELLENT": 90, "GOOD": 75, "AVERAGE": 60, "POOR": 40, "CRITICAL": 25}
         summary["performance_score"] = score_map.get(summary["performance_verdict"], 50)
+        ceiling = self._compute_verdict_ceiling(metrics.get("_hard_flags", {}))
+
+        order = ["CRITICAL", "POOR", "AVERAGE", "GOOD", "EXCELLENT"]
+
+        if order.index(summary["performance_verdict"]) > order.index(ceiling):
+            summary["performance_verdict"] = ceiling
 
         return summary

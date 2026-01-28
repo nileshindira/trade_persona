@@ -33,6 +33,9 @@ import logging
 # from scipy.stats import skew, kurtosis
 from datetime import date, datetime
 
+
+
+
 class TradingMetricsCalculator:
     """Calculate comprehensive trading metrics and trading persona traits + extended MTM/open-position analytics"""
 
@@ -128,6 +131,7 @@ class TradingMetricsCalculator:
 
 
 
+
         # -------- Core metrics (existing) --------
         metrics = {
             'total_trades': len(df),
@@ -168,6 +172,9 @@ class TradingMetricsCalculator:
         persona_traits = self.calculate_persona_traits(df)
         metrics.update(persona_traits)
 
+        hard_flags = self.compute_hard_flags(metrics)
+        metrics["_hard_flags"] = hard_flags
+
         # Flag if EMA columns exist (backward-compat)
         if 'ema_allocation' in df.columns or any(col.startswith('ema_score') for col in df.columns):
             metrics['ema_enabled'] = True
@@ -203,7 +210,55 @@ class TradingMetricsCalculator:
         metrics["pnl_volatility"] = self.pnl_df["MTM"].std()
         metrics["pnl_skewness"] = self.pnl_df["MTM"].skew()
         metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
+        metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
         metrics["value_at_risk_95"] = self.pnl_df["MTM"].quantile(0.05)
+
+        # --- 🧩 NEW: Behavioral Context Metrics ---
+        # 1. Event Based Trading
+        if "is_event" in df.columns:
+            event_trades = df[df["is_event"] == True]
+            metrics["event_trading_count"] = len(event_trades)
+            metrics["event_trading_win_rate"] = self.calculate_win_rate(event_trades)
+            metrics["event_trading_pnl"] = self.calculate_total_pnl(event_trades)
+            
+        # 2. News Based Trading
+        if "is_news" in df.columns:
+            news_trades = df[df["is_news"] == True]
+            metrics["news_trading_count"] = len(news_trades)
+            metrics["news_trading_win_rate"] = self.calculate_win_rate(news_trades)
+            metrics["news_trading_pnl"] = self.calculate_total_pnl(news_trades)
+            
+            # Breakdown by News Category
+            if "news_category" in df.columns:
+                # Top 3 categories by count
+                cat_counts = news_trades["news_category"].value_counts().head(3).to_dict()
+                metrics["news_category_breakdown"] = cat_counts
+
+        # 3. Volume Based Trading
+        if "is_high_volume" in df.columns:
+            high_vol_trades = df[df["is_high_volume"] == True]
+            metrics["high_volume_trading_count"] = len(high_vol_trades)
+            metrics["high_volume_trading_win_rate"] = self.calculate_win_rate(high_vol_trades)
+            metrics["high_volume_trading_pnl"] = self.calculate_total_pnl(high_vol_trades)
+
+        # 4. Market Behaviour (Trend Alignment)
+        # Check alignment with Nifty (if available from enrichment)
+        if "nifty50_pct_chg_1w" in df.columns:
+            # Simple Trend Definition: Nifty > 0 AND Long Trade OR Nifty < 0 AND Short Trade
+            # We use 'transaction_type' (BUY=Long, SALE=Short) for simplicity on entry
+            def is_aligned(row):
+                nifty_trend = row["nifty50_pct_chg_1w"]
+                # Assuming BUY is bullish, SELL is bearish (simplified for single leg)
+                # Ideally check position net delta, but usage of transaction_type is a proxy
+                if pd.isna(nifty_trend): return False
+                if row["transaction_type"] == "BUY" and nifty_trend > 0: return True
+                if row["transaction_type"] in ["SALE", "SELL"] and nifty_trend < 0: return True
+                return False
+
+            df["_trend_aligned"] = df.apply(is_aligned, axis=1)
+            aligned_trades = df[df["_trend_aligned"] == True]
+            metrics["trend_aligned_win_rate"] = self.calculate_win_rate(aligned_trades)
+            metrics["trend_alignment_score"] = (len(aligned_trades) / len(df) * 100) if len(df) > 0 else 0
 
         # Position / Holding behavior
         if "holding_period" in df.columns:
@@ -415,6 +470,15 @@ class TradingMetricsCalculator:
     def get_trading_days(self, df: pd.DataFrame) -> int:
         return int(df['trade_date'].dt.date.nunique())
 
+    def _bucket_from_pct(self, pct):
+        if pct < 0: return "<0%"
+        if pct < 5: return "0-5%"
+        if pct < 10: return "5-10%"
+        if pct < 20: return "10-20%"
+        if pct < 40: return "20-40%"
+        if pct < 60: return "40-60%"
+        if pct < 80: return "60-80%"
+        return ">80%"
 
     # =========================================================
     # Extended: Positions/MTM snapshot
@@ -428,6 +492,8 @@ class TradingMetricsCalculator:
           - Computes closed position aggregates and score lists
         """
         df = df.copy()
+
+
 
         # Safety guard: if data_processor hasn't added these (old files), fall back
         if "position_status" not in df.columns or "position_type" not in df.columns:
@@ -526,7 +592,11 @@ class TradingMetricsCalculator:
                 "sell_f_scores": sell_f_scores,
             })
 
+
         sym_df = pd.DataFrame(sym_rows).set_index("symbol")
+        realized_by_symbol = df.groupby("symbol")["pnl"].sum()
+
+
 
         # =========================
         # OPEN POSITIONS (LONG-OPEN / SHORT-OPEN)
@@ -580,17 +650,17 @@ class TradingMetricsCalculator:
                 invested = open_qty * entry_price
                 if today_date > expiry_date:
                     if option_type == 'CE':
-                        if int(strike) > ltp:
+                        if float(strike) > float(ltp):
                             unreal = invested
                         else:
-                            unreal = invested - ((strike-ltp) * open_qty)
+                            unreal = invested - ((float(strike)-float(ltp)) * open_qty)
                     elif option_type == 'PE':
-                        if int(strike) < ltp:
+                        if float(strike) < float(ltp):
                             unreal = invested
                         else:
-                            unreal = invested - ((ltp-strike) * open_qty)
+                            unreal = invested - ((float(ltp)-float(strike)) * open_qty)
                     else:
-                        unreal = (entry_price - ltp) * open_qty
+                        unreal = (entry_price - float(ltp)) * open_qty
                 else:
                     # 👉 MTM from LTP (short premium trade)
                     unreal = (entry_price - ltp) * open_qty
@@ -607,6 +677,44 @@ class TradingMetricsCalculator:
         sym_open["invested_value"] = invested_values
         sym_open["unrealized"] = unrealized_values
         sym_open["pct_change"] = pct_changes
+
+        # =========================
+        # CANONICAL POSITIONS DF (UI SINGLE SOURCE OF TRUTH)
+        # =========================
+        positions_df = []
+
+        for symbol, r in sym_df.iterrows():
+            realized = float(realized_by_symbol.get(symbol, 0.0))
+
+            if symbol in sym_open.index:
+                o = sym_open.loc[symbol]
+                unrealized = float(o["unrealized"])
+                invested = float(o["invested_value"])
+                return_pct = float(o["pct_change"])
+                status = "OPEN"
+            else:
+                unrealized = 0.0
+                df_sym = df[df["symbol"] == symbol]
+                invested = float(df_sym["trade_value"].abs().sum())
+                return_pct = (realized / invested * 100) if invested > 0 else 0.0
+                status = "CLOSED"
+
+            total_pnl = realized + unrealized
+
+            positions_df.append({
+                "symbol": symbol,
+                "position_status": status,
+                "position_type": r["position_type"],
+                "qty": int(abs(r["net_qty"])),
+                "invested_value": invested,
+                "realized_pnl": realized,
+                "unrealized_pnl": unrealized,
+                "total_pnl": total_pnl,
+                "return_pct": return_pct,
+                "bucket": self._bucket_from_pct(return_pct),
+                "is_gainer": total_pnl > 0,
+                "is_loser": total_pnl < 0,
+            })
 
         # ======== OPEN POSITIONS LIST FOR UI ========
         positions = []
@@ -638,7 +746,7 @@ class TradingMetricsCalculator:
         # CLOSED POSITIONS (your new required schema)
         # =========================
         sym_closed = sym_df[sym_df["position_status"] == "CLOSED"].copy()
-        realized_by_symbol = df.groupby("symbol")["pnl"].sum()
+
 ######################################################################
         all_days = []
 
@@ -705,14 +813,12 @@ class TradingMetricsCalculator:
         avg_unrealized_per_open_stock = total_unrealized / open_sym_count if open_sym_count > 0 else 0.0
 
         # Gainer / loser classification including unrealized for open
-        sym_all_total = []
-        for symbol, r in sym_df.iterrows():
-            realized = float(realized_by_symbol.get(symbol, 0.0))
-            open_unreal = float(sym_open.loc[symbol, "unrealized"]) if symbol in sym_open.index else 0.0
-            sym_all_total.append((symbol, realized + open_unreal))
 
-        gainers = [s for s, v in sym_all_total if v > 0]
-        losers = [s for s, v in sym_all_total if v < 0]
+        gainers = [p["symbol"] for p in positions_df if p["is_gainer"]]
+        losers = [p["symbol"] for p in positions_df if p["is_loser"]]
+
+        gainer = {"count": len(gainers), "list": sorted(gainers)}
+        loser = {"count": len(losers), "list": sorted(losers)}
 
         # Avg gainer/loser % using pct_change/open returns if available
         sym_pct = []
@@ -796,8 +902,9 @@ class TradingMetricsCalculator:
 
         return {
             "aggregates": aggregates,
+            "positions_df": positions_df,  # ✅ CANONICAL
+            "positions": positions,  # legacy open-only (safe)
             "closed_positions": closed_positions,
-            "positions": positions,  # open positions
             "buckets": buckets,
             "gainer": gainer,
             "loser": loser,
@@ -967,3 +1074,37 @@ class TradingMetricsCalculator:
             f"- Consistency: {traits['consistency']*100:.0f}%\n"
             f"- Confidence: {traits['confidence']*100:.0f}%\n"
         )
+
+    def compute_hard_flags(self, metrics: Dict) -> Dict:
+        trader_type = metrics.get("trader_type", "MIXED")
+        dd = metrics.get("max_drawdown_pct", 0)
+        avg_trades = metrics.get("avg_trades_per_day", 0)
+        pf = metrics.get("profit_factor", 0)
+        emo = metrics.get("persona_traits", {}).get("emotional_control", 0)
+
+        # --- Drawdown thresholds ---
+        dd_limit = {
+            "INTRADAY TRADER": 20,
+            "POSITIONAL TRADER": 30,
+            "LONG TERM TRADER": 35,
+            "MIXED": 25
+        }.get(trader_type, 25)
+
+        # --- Overtrading thresholds ---
+        trade_limit = {
+            "INTRADAY TRADER": 12,
+            "POSITIONAL TRADER": 3,
+            "LONG TERM TRADER": 0.5,
+            "MIXED": 6
+        }.get(trader_type, 6)
+
+        hard_flags = {
+            "capital_at_risk_high": dd > dd_limit,
+            "overtrading": avg_trades > trade_limit,
+            "negative_expectancy": pf < 1,
+            "fragile_edge": 1 <= pf < 1.3,
+            "emotional_instability": emo < 0.4,
+            "severe_emotional_trading": emo < 0.3,
+        }
+
+        return hard_flags

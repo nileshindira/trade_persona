@@ -80,6 +80,9 @@ class TradingPersonaAnalyzer:
         df = self.data_processor.pair_trades(df, output_dir=output_dir, trader_name=trader_name)
 
 
+
+
+
         # # Step 1.5: Add EMA scores (NEW FEATURE)
         # ema_stats = None
         # if include_ema and self.ema_enabled:
@@ -110,7 +113,6 @@ class TradingPersonaAnalyzer:
 
         # add nifty data chart in analysis['web_data']['nifty_pnl_timeline']->[date]['values']
         # --- Normalize PNL & NIFTY values to 100 scale
-
         # PNL cumulative
         pnl_vals = analysis['web_data']['charts']['pnl_timeline']['values']
         # print(pnl_vals)
@@ -122,11 +124,13 @@ class TradingPersonaAnalyzer:
 
         # Normalize NIFTY
         nifty_vals = list(nifty_chart_data.values())
+        print(nifty_vals)
         if nifty_vals:
             start_idx = nifty_vals[0]
             norm_nifty_vals = [(v / start_idx) * 100 for v in nifty_vals]
         else:
             norm_nifty_vals = []
+
 
 
         analysis_web_data_charts = {}
@@ -221,4 +225,6 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
+    print(f"time started = {datetime.now()}")
     main()
+    print(f"time finished = {datetime.now()}")

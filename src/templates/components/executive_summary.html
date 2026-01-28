@@ -44,6 +44,30 @@
               </div>
             </div>
 
+              {% if report.hard_flags %}
+            <div class="card risk-flags">
+              <h3>⚠️ Hard Risk Flags</h3>
+
+              <div class="risk-severity {{ report.risk_severity | lower }}">
+                Overall Risk: <strong>{{ report.risk_severity }}</strong>
+              </div>
+
+              <ul class="flag-list">
+                {% for flag, value in report.hard_flags.items() %}
+                  {% if value == "True" %}
+                    <li class="flag-item flag-{{ flag }}">
+                      🔴 {{ flag.replace("_", " ").title() }}
+                    </li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+
+              {% if report.hard_flags | length == 0 %}
+                <p class="ok-text">✅ No hard risk flags detected</p>
+              {% endif %}
+            </div>
+            {% endif %}
+
                <h4 class="section-title"><span>📸 </span> P&L Snapshot</h4>
             <div class="row g-3 mb-3">
               <div class="col-md-2">
