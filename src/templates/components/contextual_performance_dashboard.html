@@ -1,131 +1,169 @@
-<!-- Contextual Performance Analysis Dashboard -->
-<div class="row g-4 mb-4">
-    <!-- Event Trading Card -->
-    <div class="col-md-6 col-lg-3">
-        <div class="card h-100 border-0 shadow-sm metric-card">
-            <div class="card-body">
-                <h6 class="text-secondary text-uppercase small fw-bold mb-3">
-                    <i class="bi bi-calendar-event me-2 text-primary"></i>Event Trading
-                </h6>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h3 class="mb-0 fw-bold">{{ report.detailed_metrics.event_trading_win_rate|round(1) if
-                        report.detailed_metrics.event_trading_win_rate is defined else 0 }}%</h3>
-                    <span
-                        class="badge {{ 'bg-success' if (report.detailed_metrics.event_trading_pnl|default(0)) > 0 else 'bg-danger' }} bg-opacity-10 text-{{ 'success' if (report.detailed_metrics.event_trading_pnl|default(0)) > 0 else 'danger' }}">
-                        {{ '₹{:,.0f}'.format(report.detailed_metrics.event_trading_pnl|default(0)) }}
-                    </span>
-                </div>
-                <p class="text-muted small mb-3">Win Rate & Net PnL on Event Days</p>
+<div class="row g-3">
+    <!-- Header -->
+    <div class="col-12">
+        <h4 class="fw-bold text-primary mb-3">
+            <i class="bi bi-crosshair me-2"></i>Contextual Performance Dashboard
+        </h4>
+        <div class="alert alert-soft-primary small p-2">
+            This dashboard isolates your performance across specific market conditions (Events, News, Trends, Volume).
+        </div>
+    </div>
 
-                <div
-                    class="alert {{ 'alert-success' if 'Profit' in report.analysis_text.context_performance.event.verdict else 'alert-light' }} py-2 px-3 mb-0 border">
-                    <div class="d-flex align-items-center mb-1">
-                        <i class="bi bi-robot me-2 text-primary"></i>
-                        <strong class="small">{{
-                            report.analysis_text.context_performance.event.verdict|default('Neutral') }}</strong>
+    <!-- 1. Event Trading -->
+    <div class="col-md-3">
+        <div class="card h-100 border-0 shadow-sm metric-card">
+            <div class="card-body text-center">
+                <div class="metric-icon bg-warning-subtle text-warning mb-2">⚡</div>
+                <h6 class="text-uppercase text-muted small fw-bold">Event Trading</h6>
+                <div class="d-flex justify-content-between px-3 mt-3">
+                    <div class="text-start">
+                        <small class="d-block text-muted">Count</small>
+                        <span class="h5 mb-0">{{ report.web_data.kpis.event_trading_count|default(0) }}</span>
                     </div>
-                    <p class="small mb-0 text-muted lh-sm">
-                        {{ report.analysis_text.context_performance.event.reasoning|default('No events analyzed.') }}
-                    </p>
+                    <div class="text-end">
+                        <small class="d-block text-muted">Win Rate</small>
+                        <span
+                            class="badge {{ 'bg-success' if report.web_data.kpis.event_trading_win_rate|default(0)|float > 50 else 'bg-danger' }}">
+                            {{ report.web_data.kpis.event_trading_win_rate|default(0)|float|round(1) }}%
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-2 pt-2 border-top">
+                    <small class="text-muted">Net P&L</small>
+                    <div
+                        class="fw-bold {{ 'text-success' if report.web_data.kpis.event_trading_pnl|default(0)|float > 0 else 'text-danger' }}">
+                        ₹{{ report.web_data.kpis.event_trading_pnl|default(0)|float|round(0) }}
+                    </div>
+                </div>
+
+                <!-- AI INSIGHT -->
+                <div class="mt-3 p-2 bg-light rounded text-start border-start border-4 border-warning">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-robot text-warning me-2"></i>
+                        <span class="fw-bold small text-dark">{{ report.analysis_text.context_performance.event.verdict
+                            | default("") }}</span>
+                    </div>
+                    <p class="small text-muted mb-0 lh-sm">{{ report.analysis_text.context_performance.event.reasoning |
+                        default("") }}</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- News Trading Card -->
-    <div class="col-md-6 col-lg-3">
+    <!-- 2. News Trading -->
+    <div class="col-md-3">
         <div class="card h-100 border-0 shadow-sm metric-card">
-            <div class="card-body">
-                <h6 class="text-secondary text-uppercase small fw-bold mb-3">
-                    <i class="bi bi-newspaper me-2 text-info"></i>News Trading
-                </h6>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h3 class="mb-0 fw-bold">{{ report.detailed_metrics.news_trading_win_rate|round(1) if
-                        report.detailed_metrics.news_trading_win_rate is defined else 0 }}%</h3>
-                    <span
-                        class="badge {{ 'bg-success' if (report.detailed_metrics.news_trading_pnl|default(0)) > 0 else 'bg-danger' }} bg-opacity-10 text-{{ 'success' if (report.detailed_metrics.news_trading_pnl|default(0)) > 0 else 'danger' }}">
-                        {{ '₹{:,.0f}'.format(report.detailed_metrics.news_trading_pnl|default(0)) }}
-                    </span>
-                </div>
-                <p class="text-muted small mb-3">Win Rate & Net PnL on News Days</p>
-
-                <div
-                    class="alert {{ 'alert-success' if 'Profit' in report.analysis_text.context_performance.news.verdict else 'alert-light' }} py-2 px-3 mb-0 border">
-                    <div class="d-flex align-items-center mb-1">
-                        <i class="bi bi-robot me-2 text-primary"></i>
-                        <strong class="small">{{
-                            report.analysis_text.context_performance.news.verdict|default('Neutral') }}</strong>
+            <div class="card-body text-center">
+                <div class="metric-icon bg-info-subtle text-info mb-2">📰</div>
+                <h6 class="text-uppercase text-muted small fw-bold">News Trading</h6>
+                <div class="d-flex justify-content-between px-3 mt-3">
+                    <div class="text-start">
+                        <small class="d-block text-muted">Count</small>
+                        <span class="h5 mb-0">{{ report.web_data.kpis.news_trading_count|default(0) }}</span>
                     </div>
-                    <p class="small mb-0 text-muted lh-sm">
-                        {{ report.analysis_text.context_performance.news.reasoning|default('No news impact analyzed.')
-                        }}
-                    </p>
+                    <div class="text-end">
+                        <small class="d-block text-muted">Win Rate</small>
+                        <span
+                            class="badge {{ 'bg-success' if report.web_data.kpis.news_trading_win_rate|default(0)|float > 50 else 'bg-danger' }}">
+                            {{ report.web_data.kpis.news_trading_win_rate|default(0)|float|round(1) }}%
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-2 pt-2 border-top">
+                    <small class="text-muted">Net P&L</small>
+                    <div
+                        class="fw-bold {{ 'text-success' if report.web_data.kpis.news_trading_pnl|default(0)|float > 0 else 'text-danger' }}">
+                        ₹{{ report.web_data.kpis.news_trading_pnl|default(0)|float|round(0) }}
+                    </div>
+                </div>
+
+                <!-- AI INSIGHT -->
+                <div class="mt-3 p-2 bg-light rounded text-start border-start border-4 border-info">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-robot text-info me-2"></i>
+                        <span class="fw-bold small text-dark">{{ report.analysis_text.context_performance.news.verdict |
+                            default("") }}</span>
+                    </div>
+                    <p class="small text-muted mb-0 lh-sm">{{ report.analysis_text.context_performance.news.reasoning |
+                        default("") }}</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- High Volume Trading Card -->
-    <div class="col-md-6 col-lg-3">
+    <!-- 3. High Volume Trading -->
+    <div class="col-md-3">
         <div class="card h-100 border-0 shadow-sm metric-card">
-            <div class="card-body">
-                <h6 class="text-secondary text-uppercase small fw-bold mb-3">
-                    <i class="bi bi-bar-chart-fill me-2 text-warning"></i>High Volume
-                </h6>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h3 class="mb-0 fw-bold">{{ report.detailed_metrics.high_volume_trading_win_rate|round(1) if
-                        report.detailed_metrics.high_volume_trading_win_rate is defined else 0 }}%</h3>
-                    <span
-                        class="badge {{ 'bg-success' if (report.detailed_metrics.high_volume_trading_pnl|default(0)) > 0 else 'bg-danger' }} bg-opacity-10 text-{{ 'success' if (report.detailed_metrics.high_volume_trading_pnl|default(0)) > 0 else 'danger' }}">
-                        {{ '₹{:,.0f}'.format(report.detailed_metrics.high_volume_trading_pnl|default(0)) }}
-                    </span>
-                </div>
-                <p class="text-muted small mb-3">Win Rate & Net PnL on High Volume</p>
-
-                <div
-                    class="alert {{ 'alert-success' if 'Profit' in report.analysis_text.context_performance.volume.verdict else 'alert-light' }} py-2 px-3 mb-0 border">
-                    <div class="d-flex align-items-center mb-1">
-                        <i class="bi bi-robot me-2 text-primary"></i>
-                        <strong class="small">{{
-                            report.analysis_text.context_performance.volume.verdict|default('Neutral') }}</strong>
+            <div class="card-body text-center">
+                <div class="metric-icon bg-purple-subtle text-purple mb-2">📊</div>
+                <h6 class="text-uppercase text-muted small fw-bold">High Volume Trading</h6>
+                <div class="d-flex justify-content-between px-3 mt-3">
+                    <div class="text-start">
+                        <small class="d-block text-muted">Count</small>
+                        <span class="h5 mb-0">{{ report.web_data.kpis.high_volume_trading_count|default(0) }}</span>
                     </div>
-                    <p class="small mb-0 text-muted lh-sm">
-                        {{ report.analysis_text.context_performance.volume.reasoning|default('Volume impact not
-                        significant.') }}
-                    </p>
+                    <div class="text-end">
+                        <small class="d-block text-muted">Win Rate</small>
+                        <span
+                            class="badge {{ 'bg-success' if report.web_data.kpis.high_volume_trading_win_rate|default(0)|float > 50 else 'bg-danger' }}">
+                            {{ report.web_data.kpis.high_volume_trading_win_rate|default(0)|float|round(1) }}%
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-2 pt-2 border-top">
+                    <small class="text-muted">Net P&L</small>
+                    <div
+                        class="fw-bold {{ 'text-success' if report.web_data.kpis.high_volume_trading_pnl|default(0)|float > 0 else 'text-danger' }}">
+                        ₹{{ report.web_data.kpis.high_volume_trading_pnl|default(0)|float|round(0) }}
+                    </div>
+                </div>
+
+                <!-- AI INSIGHT -->
+                <div class="mt-3 p-2 bg-light rounded text-start border-start border-4 border-purple"
+                    style="border-color: #6f42c1 !important;">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-robot text-purple me-2" style="color: #6f42c1;"></i>
+                        <span class="fw-bold small text-dark">{{ report.analysis_text.context_performance.volume.verdict
+                            | default("") }}</span>
+                    </div>
+                    <p class="small text-muted mb-0 lh-sm">{{ report.analysis_text.context_performance.volume.reasoning
+                        | default("") }}</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Trend Following Card -->
-    <div class="col-md-6 col-lg-3">
+    <!-- 4. Trend Alignment (NIFTY) -->
+    <div class="col-md-3">
         <div class="card h-100 border-0 shadow-sm metric-card">
-            <div class="card-body">
-                <h6 class="text-secondary text-uppercase small fw-bold mb-3">
-                    <i class="bi bi-graph-up-arrow me-2 text-success"></i>Trend Alignment
-                </h6>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h3 class="mb-0 fw-bold">{{ report.detailed_metrics.trend_aligned_win_rate|round(1) if
-                        report.detailed_metrics.trend_aligned_win_rate is defined else 0 }}%</h3>
-                    <span class="badge bg-primary bg-opacity-10 text-primary">
-                        Score: {{ report.detailed_metrics.trend_alignment_score|round(0) if
-                        report.detailed_metrics.trend_alignment_score is defined else 0 }}/100
+            <div class="card-body text-center">
+                <div class="metric-icon bg-success-subtle text-success mb-2">🌊</div>
+                <h6 class="text-uppercase text-muted small fw-bold">Trend Alignment (Nifty)</h6>
+                <div class="chart-container" style="height: 100px; position: relative;">
+                    <!-- Mini Donut for Trend Score -->
+                    <canvas id="trendAlignmentChart"></canvas>
+                    <div class="donut-inner">
+                        <h5 class="mb-0 fw-bold">{{ report.web_data.kpis.trend_alignment_score|default(0)|float|round(0)
+                            }}%</h5>
+                    </div>
+                </div>
+                <div class="mt-1">
+                    <small class="text-muted">Trades Aligned with Market Direction</small>
+                    <br>
+                    <span class="badge bg-light text-dark border">
+                        Aligned Win Rate: {{ report.web_data.kpis.trend_aligned_win_rate|default(0)|float|round(1) }}%
                     </span>
                 </div>
-                <p class="text-muted small mb-3">Win Rate when Aligned with Market</p>
 
-                <div
-                    class="alert {{ 'alert-success' if 'Aligned' in report.analysis_text.context_performance.trend.verdict else 'alert-light' }} py-2 px-3 mb-0 border">
+                <!-- AI INSIGHT -->
+                <div class="mt-3 p-2 bg-light rounded text-start border-start border-4 border-success">
                     <div class="d-flex align-items-center mb-1">
-                        <i class="bi bi-robot me-2 text-primary"></i>
-                        <strong class="small">{{
-                            report.analysis_text.context_performance.trend.verdict|default('Neutral') }}</strong>
+                        <i class="bi bi-robot text-success me-2"></i>
+                        <span class="fw-bold small text-dark">{{ report.analysis_text.context_performance.trend.verdict
+                            | default("") }}</span>
                     </div>
-                    <p class="small mb-0 text-muted lh-sm">
-                        {{ report.analysis_text.context_performance.trend.reasoning|default('Trend data insufficient.')
-                        }}
-                    </p>
+                    <p class="small text-muted mb-0 lh-sm">{{ report.analysis_text.context_performance.trend.reasoning |
+                        default("") }}</p>
                 </div>
             </div>
         </div>
