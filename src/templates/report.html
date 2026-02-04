@@ -553,6 +553,67 @@ SCRIPTS (same as before)
   })();
   {% endif %}
 
+  // Chart Behavior (Good/Bad) Pie Chart
+  {% if report.web_data and report.web_data.kpis and report.web_data.kpis.chart_behavior_breakdown %}
+  (function () {
+    const ctx = document.getElementById('chartBehaviorChart');
+    if (ctx) {
+      const breakdown = report.web_data.kpis.chart_behavior_breakdown;
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: breakdown.map(x => x.label),
+          datasets: [{
+            data: breakdown.map(x => x.value),
+            backgroundColor: ['#28a745', '#dc3545', '#6c757d'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
+  // Trend Alignment Donut
+  {% if report.web_data and report.web_data.kpis and report.web_data.kpis.trend_alignment_score %}
+  (function () {
+    const ctx = document.getElementById('trendAlignmentChart');
+    if (ctx) {
+      const score = report.web_data.kpis.trend_alignment_score;
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Aligned', 'Unaligned'],
+          datasets: [{
+            data: [score, 100 - score],
+            backgroundColor: ['#10b981', '#f3f4f6'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '80%',
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
 
   // for scrolling
   // Smooth scroll on click

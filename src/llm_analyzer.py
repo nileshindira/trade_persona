@@ -79,6 +79,21 @@ class OllamaAnalyzer:
             'high_volume_trading_count': metrics.get('high_volume_trading_count', 0),
             'high_volume_trading_win_rate': metrics.get('high_volume_trading_win_rate', 0),
             'high_volume_trading_pnl': metrics.get('high_volume_trading_pnl', 0),
+
+            # 6. Price Extremes & Chart Quality (NEW)
+            'ath_trading_count': metrics.get('ath_trading_count', 0),
+            'ath_trading_win_rate': metrics.get('ath_trading_win_rate', 0),
+            'ath_trading_pnl': metrics.get('ath_trading_pnl', 0),
+            'atl_trading_count': metrics.get('atl_trading_count', 0),
+            'atl_trading_win_rate': metrics.get('atl_trading_win_rate', 0),
+            'atl_trading_pnl': metrics.get('atl_trading_pnl', 0),
+            'good_chart_trading_count': metrics.get('good_chart_trading_count', 0),
+            'good_chart_trading_win_rate': metrics.get('good_chart_trading_win_rate', 0),
+            'good_chart_trading_pnl': metrics.get('good_chart_trading_pnl', 0),
+            'bad_chart_trading_count': metrics.get('bad_chart_trading_count', 0),
+            'bad_chart_trading_win_rate': metrics.get('bad_chart_trading_win_rate', 0),
+            'bad_chart_trading_pnl': metrics.get('bad_chart_trading_pnl', 0),
+            'chart_behavior_breakdown': metrics.get('chart_behavior_breakdown', []),
         }
         return kpis
 
@@ -121,6 +136,8 @@ class OllamaAnalyzer:
             'largest_win': metrics.get('largest_win', 0),
             'largest_loss': metrics.get('largest_loss', 0),
         }
+
+        chart_data['chart_quality_distribution'] = metrics.get('chart_behavior_breakdown', [])
 
         return chart_data
 
@@ -329,15 +346,32 @@ class OllamaAnalyzer:
         return context
 
     def _format_trades_data(self, df: pd.DataFrame) -> str:
-        """Send RAW trades DataFrame to LLM - no preprocessing"""
+        """Send RAW trades DataFrame to LLM - limited to avoid context overflow"""
 
         if df is None or df.empty:
             return "\nTRADES DATA: No trades available\n"
 
+        # --- CRITICAL FIX: LIMIT TRADES FOR LLM CONTEXT ---
+        max_trades = 100
+        if len(df) > max_trades:
+            self.logger.info(f"Trimming trades dataset from {len(df)} to {max_trades} for LLM context")
+            # Sample: First 40, Last 40, and 20 Random items to give a sense of the whole period
+            df_sampled = pd.concat([
+                df.head(40),
+                df.sample(n=min(20, len(df)-80)) if len(df) > 80 else pd.DataFrame(),
+                df.tail(40)
+            ]).drop_duplicates().sort_index()
+            df_to_use = df_sampled
+            truncated_note = f"\n[NOTE: Showing {len(df_to_use)} of {len(df)} trades only to stay within context limits]\n"
+        else:
+            df_to_use = df
+            truncated_note = ""
+
         # Simple header
         trades_context = f"""
     ================================================================================
-    RAW TRADES DATASET ({len(df)} trades)
+    RAW TRADES DATASET ({len(df)} trades total)
+    {truncated_note}
     ================================================================================
     
     """
@@ -347,7 +381,7 @@ class OllamaAnalyzer:
             import numpy as np
 
             # Replace NaN with None for proper JSON serialization
-            df_clean = df.replace({np.nan: None})
+            df_clean = df_to_use.replace({np.nan: None})
 
             # Convert to JSON - RAW data only
             all_trades_json = df_clean.to_json(orient='records', date_format='iso', indent=2)
@@ -356,7 +390,7 @@ class OllamaAnalyzer:
         except Exception as e:
             # Fallback: convert to dict if JSON serialization fails
             self.logger.warning(f"JSON serialization failed, using dict format: {e}")
-            trades_context += json.dumps(df.to_dict('records'), indent=2, default=str)
+            trades_context += json.dumps(df_to_use.to_dict('records'), indent=2, default=str)
 
         trades_context += "\n\n================================================================================"
 
@@ -386,7 +420,7 @@ class OllamaAnalyzer:
                             "top_p": self.config['ollama']['top_p']
                         }
                     },
-                    timeout=120
+                    timeout=1200
                 )
 
                 if response.status_code == 200:
@@ -425,7 +459,7 @@ class OllamaAnalyzer:
                 self.config["openrouter"]["base_url"],
                 headers=headers,
                 json=payload,
-                timeout=120
+                timeout=1200
             )
 
             if response.status_code == 200:
@@ -634,7 +668,13 @@ Provide the behavioral analysis:
         return self._call_ollama(prompt, system_prompt)
 
     def _analyze_context_performance(self, context: str) -> Dict:
-        """Analyze contextual performance (Events, News, Trend, Volume) returning STRUCTURED JSON"""
+        # """Analyze contextual performance (Events, News, Trend, Volume, Charts, ATH/ATL) returning STRUCTURED JSON"""
+        #
+        # # --- CRITICAL FIX: STRIP RAW TRADES FROM CONTEXT TO AVOID OVERLOAD ---
+        # short_context = context
+        # if "RAW TRADES DATASET" in context:
+        #     short_context = context.split("RAW TRADES DATASET")[0]
+        #
         prompt = f"""
         You are a high-performance trading psychologist analyzing a trader's behavior in specific contexts.
 
@@ -645,9 +685,7 @@ Provide the behavioral analysis:
         CRITICAL INSTRUCTIONS:
         1. **Do NOT just repeat the numbers** (The user can see the Win Rate/PnL). 
         2. **Explain the BEHAVIOR**: Why are they winning/losing in this context?
-        3. **Map to PERSONA**: Link the observation to the identified 'Persona Type' and 'Traits' (Discipline, Patience, etc.).
-           - Example: "As a Momentum Chaser, they struggle in low volume because..."
-           - Example: "High Event profit confirms their high Risk Appetite..."
+        3. **Map to PERSONA**: Link the observation to the identified 'Persona Type' and 'Traits'.
 
         Return a STRICT JSON object with no markdown formatting.
 
@@ -655,7 +693,7 @@ Provide the behavioral analysis:
         {{
             "event": {{
                 "verdict": "Psychological/Behavioral Title (2-3 words)",
-                "reasoning": "Insightful explanation linking performance to their specific Persona and traits. (Max 2 sentences)"
+                "reasoning": "Insight linking to Persona traits."
             }},
             "news": {{
                 "verdict": "Verdict Title",
@@ -668,6 +706,18 @@ Provide the behavioral analysis:
             "trend": {{
                 "verdict": "Verdict Title",
                 "reasoning": "Insight linking to Persona."
+            }},
+            "chart_quality": {{
+                "verdict": "Verdict Title (e.g. 'Setup Discipline')",
+                "reasoning": "Analyze performance on Good vs Bad charts. Do they respect technical setups?"
+            }},
+            "ath": {{
+                "verdict": "Verdict Title (e.g. 'Breakout Confidence')",
+                "reasoning": "Analyze behavior at All-Time Highs (fear of heights or momentum capture?)."
+            }},
+            "atl": {{
+                "verdict": "Verdict Title (e.g. 'Value Hunting')",
+                "reasoning": "Analyze behavior at All-Time Lows (catching falling knives or value signs?)."
             }}
         }}
 
@@ -684,6 +734,9 @@ Provide the behavioral analysis:
         try:
             # Clean potential markdown code blocks
             clean_json = re.sub(r"```json|```", "", raw_response).strip()
+            # Sanitization
+            clean_json = clean_json.replace("‑", "-").replace("“", '"').replace("”", '"')
+            
             return json.loads(clean_json)
         except Exception as e:
             self.logger.error(f"Failed to parse context JSON: {e}")
@@ -692,7 +745,10 @@ Provide the behavioral analysis:
                 "event": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
                 "news": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
                 "volume": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "trend": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."}
+                "trend": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "chart_quality": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "ath": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
+                "atl": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."}
             }
 
     def _generate_recommendations(self, context: str) -> str:
@@ -872,8 +928,8 @@ Provide the executive summary:
         ceiling = self._compute_verdict_ceiling(metrics.get("_hard_flags", {}))
 
         order = ["CRITICAL", "POOR", "AVERAGE", "GOOD", "EXCELLENT"]
-
-        if order.index(summary["performance_verdict"]) > order.index(ceiling):
-            summary["performance_verdict"] = ceiling
+        if summary["performance_verdict"] in order:
+            if order.index(summary["performance_verdict"]) > order.index(ceiling):
+                summary["performance_verdict"] = ceiling
 
         return summary

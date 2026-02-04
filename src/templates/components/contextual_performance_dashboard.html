@@ -169,3 +169,144 @@
         </div>
     </div>
 </div>
+
+<!-- Row 2: Chart Quality & Price Extremes -->
+<div class="row g-3 mt-2">
+    <!-- 5. Chart Quality (Good vs Bad Charts) -->
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm metric-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="metric-icon bg-primary-subtle text-primary me-2">📉</div>
+                    <h6 class="text-uppercase text-muted small fw-bold mb-0">Chart Quality Analysis</h6>
+                </div>
+
+                <div class="row">
+                    <!-- Chart -->
+                    <div class="col-md-4 text-center">
+                        <div class="chart-container" style="height: 120px; position: relative;">
+                            <canvas id="chartBehaviorChart"></canvas>
+                        </div>
+                        <small class="text-muted d-block mt-2">Trades Distribution</small>
+                    </div>
+
+                    <!-- Metrics -->
+                    <div class="col-md-8">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="p-2 border rounded bg-light">
+                                    <small class="d-block text-muted">Good Charts</small>
+                                    <div class="d-flex justify-content-between align-items-end">
+                                        <span class="fw-bold">{{
+                                            report.web_data.kpis.good_chart_trading_count|default(0) }}</span>
+                                        <span
+                                            class="badge {{ 'bg-success' if report.web_data.kpis.good_chart_trading_win_rate|default(0)|float > 50 else 'bg-danger' }}">
+                                            WR: {{
+                                            report.web_data.kpis.good_chart_trading_win_rate|default(0)|float|round(0)
+                                            }}%
+                                        </span>
+                                    </div>
+                                    <div
+                                        class="{{ 'text-success' if report.web_data.kpis.good_chart_trading_pnl|default(0)|float > 0 else 'text-danger' }} small fw-bold mt-1">
+                                        ₹{{ report.web_data.kpis.good_chart_trading_pnl|default(0)|float|round(0) }}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="p-2 border rounded bg-light">
+                                    <small class="d-block text-muted">Bad Charts</small>
+                                    <div class="d-flex justify-content-between align-items-end">
+                                        <span class="fw-bold">{{ report.web_data.kpis.bad_chart_trading_count|default(0)
+                                            }}</span>
+                                        <span
+                                            class="badge {{ 'bg-success' if report.web_data.kpis.bad_chart_trading_win_rate|default(0)|float > 50 else 'bg-danger' }}">
+                                            WR: {{
+                                            report.web_data.kpis.bad_chart_trading_win_rate|default(0)|float|round(0)
+                                            }}%
+                                        </span>
+                                    </div>
+                                    <div
+                                        class="{{ 'text-success' if report.web_data.kpis.bad_chart_trading_pnl|default(0)|float > 0 else 'text-danger' }} small fw-bold mt-1">
+                                        ₹{{ report.web_data.kpis.bad_chart_trading_pnl|default(0)|float|round(0) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI INSIGHT -->
+                        <div class="mt-3 p-2 bg-light rounded text-start border-start border-4 border-primary">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-robot text-primary me-2"></i>
+                                <span class="fw-bold small text-dark">{{
+                                    report.analysis_text.context_performance.chart_quality.verdict |
+                                    default("Analyzing...") }}</span>
+                            </div>
+                            <p class="small text-muted mb-0 lh-sm">{{
+                                report.analysis_text.context_performance.chart_quality.reasoning | default("") }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. Price Extremes (ATH / ATL) -->
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm metric-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="metric-icon bg-danger-subtle text-danger me-2">🚀</div>
+                    <h6 class="text-uppercase text-muted small fw-bold mb-0">Price Extremes (ATH / ATL)</h6>
+                </div>
+
+                <div class="row g-2">
+                    <!-- ATH -->
+                    <div class="col-md-6">
+                        <div class="p-2 border rounded bg-light h-100">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="fw-bold text-muted">All Time Highs</small>
+                                <span class="badge bg-secondary">{{ report.web_data.kpis.ath_trading_count|default(0) }}
+                                    Trades</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span
+                                    class="h6 mb-0 {{ 'text-success' if report.web_data.kpis.ath_trading_pnl|default(0)|float > 0 else 'text-danger' }}">
+                                    ₹{{ report.web_data.kpis.ath_trading_pnl|default(0)|float|round(0) }}
+                                </span>
+                                <small class="text-muted">Win: {{
+                                    report.web_data.kpis.ath_trading_win_rate|default(0)|float|round(0) }}%</small>
+                            </div>
+                            <!-- AI Insight ATH -->
+                            <p class="small text-muted mb-0 fst-italic border-top pt-1">
+                                "{{ report.analysis_text.context_performance.ath.verdict | default('No Data') }}"
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ATL -->
+                    <div class="col-md-6">
+                        <div class="p-2 border rounded bg-light h-100">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="fw-bold text-muted">All Time Lows</small>
+                                <span class="badge bg-secondary">{{ report.web_data.kpis.atl_trading_count|default(0) }}
+                                    Trades</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span
+                                    class="h6 mb-0 {{ 'text-success' if report.web_data.kpis.atl_trading_pnl|default(0)|float > 0 else 'text-danger' }}">
+                                    ₹{{ report.web_data.kpis.atl_trading_pnl|default(0)|float|round(0) }}
+                                </span>
+                                <small class="text-muted">Win: {{
+                                    report.web_data.kpis.atl_trading_win_rate|default(0)|float|round(0) }}%</small>
+                            </div>
+                            <!-- AI Insight ATL -->
+                            <p class="small text-muted mb-0 fst-italic border-top pt-1">
+                                "{{ report.analysis_text.context_performance.atl.verdict | default('No Data') }}"
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

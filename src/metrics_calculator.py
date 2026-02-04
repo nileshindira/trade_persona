@@ -241,6 +241,66 @@ class TradingMetricsCalculator:
             metrics["high_volume_trading_win_rate"] = self.calculate_win_rate(high_vol_trades)
             metrics["high_volume_trading_pnl"] = self.calculate_total_pnl(high_vol_trades)
 
+        # 3.5. Market Behaviour / Chart Quality (Good vs Bad Charts)
+        # Ensure metrics are initialized
+        metrics.update({
+            "good_chart_trading_count": 0, "good_chart_trading_win_rate": 0, "good_chart_trading_pnl": 0,
+            "bad_chart_trading_count": 0, "bad_chart_trading_win_rate": 0, "bad_chart_trading_pnl": 0,
+            "chart_behavior_breakdown": []
+        })
+
+        # Handle potential column name variations
+        col = "chart_charts" if "chart_charts" in df.columns else ("market_behaviour" if "market_behaviour" in df.columns else None)
+        
+        if col:
+            # Good Charts
+            good_chart_trades = df[df[col].astype(str).str.contains("Good|High", case=False, na=False)]
+            metrics["good_chart_trading_count"] = len(good_chart_trades)
+            metrics["good_chart_trading_win_rate"] = self.calculate_win_rate(good_chart_trades)
+            metrics["good_chart_trading_pnl"] = self.calculate_total_pnl(good_chart_trades)
+            
+            # Bad Charts
+            bad_chart_trades = df[df[col].astype(str).str.contains("Bad", case=False, na=False)]
+            metrics["bad_chart_trading_count"] = len(bad_chart_trades)
+            metrics["bad_chart_trading_win_rate"] = self.calculate_win_rate(bad_chart_trades)
+            metrics["bad_chart_trading_pnl"] = self.calculate_total_pnl(bad_chart_trades)
+
+            # Chart Behavior Pie Data
+            metrics["chart_behavior_breakdown"] = [
+                {"label": "Good Charts", "value": len(good_chart_trades)},
+                {"label": "Bad Charts", "value": len(bad_chart_trades)},
+                {"label": "Neutral/Other", "value": len(df) - len(good_chart_trades) - len(bad_chart_trades)}
+            ]
+
+        # 3.6. ATH / ATL Context
+        # Ensure metrics are initialized
+        metrics.update({
+            "ath_trading_count": 0, "ath_trading_win_rate": 0, "ath_trading_pnl": 0,
+            "atl_trading_count": 0, "atl_trading_win_rate": 0, "atl_trading_pnl": 0
+        })
+
+        # Fallback for ATH flags
+        if "is_alltime_high" not in df.columns and "dist_from_52w_high_pct" in df.columns:
+            # If within 0.5% of 52w high, consider it a proxy for ATH/High price
+            df["is_alltime_high"] = df["dist_from_52w_high_pct"] >= -0.5
+        elif "is_alltime_high" not in df.columns and "is_52week_high" in df.columns:
+            df["is_alltime_high"] = df["is_52week_high"]
+
+        if "is_alltime_high" in df.columns:
+            ath_trades = df[df["is_alltime_high"] == True]
+            metrics["ath_trading_count"] = len(ath_trades)
+            metrics["ath_trading_win_rate"] = self.calculate_win_rate(ath_trades)
+            metrics["ath_trading_pnl"] = self.calculate_total_pnl(ath_trades)
+
+        if "is_alltime_low" not in df.columns and "is_52week_low" in df.columns:
+             df["is_alltime_low"] = df["is_52week_low"]
+
+        if "is_alltime_low" in df.columns:
+            atl_trades = df[df["is_alltime_low"] == True]
+            metrics["atl_trading_count"] = len(atl_trades)
+            metrics["atl_trading_win_rate"] = self.calculate_win_rate(atl_trades)
+            metrics["atl_trading_pnl"] = self.calculate_total_pnl(atl_trades)
+
         # 4. Market Behaviour (Trend Alignment)
         # Check alignment with Nifty (if available from enrichment)
         if "nifty50_pct_chg_1w" in df.columns:

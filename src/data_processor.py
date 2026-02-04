@@ -64,6 +64,7 @@ class TradingDataProcessor:
             db_df["symbol"] = db_df["symbol"].str.upper()
 
             # --- Create index for fast lookup ---
+            db_df.drop_duplicates(subset=["symbol", "date"], keep='last', inplace=True)
             db_df.set_index(["symbol", "date"], inplace=True)
             db_df.sort_index(level=["symbol", "date"], inplace=True)
             merged_rows = []
@@ -81,16 +82,20 @@ class TradingDataProcessor:
 
                 if candidates:
                     # Convert row to DataFrame
-                    left_df = pd.DataFrame([row])
+                    left_df = pd.DataFrame([row]).reset_index(drop=True)
 
                     # Convert candidate row(s) to DataFrame
                     right = candidates[0]
                     if isinstance(right, pd.Series):
-                        right_df = pd.DataFrame([right])
+                        right_df = pd.DataFrame([right]).reset_index(drop=True)
                     else:
                         right_df = right.reset_index(drop=True)  # already DataFrame
+                    
+                    # Drop overlapping columns from right_df to avoid InvalidIndexError
+                    common_cols = [c for c in right_df.columns if c in left_df.columns or c == 'date']
+                    right_df.drop(columns=common_cols, inplace=True, errors='ignore')
 
-                    merged_data = pd.concat([left_df.reset_index(drop=True), right_df], axis=1)
+                    merged_data = pd.concat([left_df, right_df], axis=1)
 
 
                 else:
@@ -612,6 +617,11 @@ class TradingDataProcessor:
         This removes ambiguity for MetricsCalculator.
         """
         df = df.copy()
+        # Safety: remove any duplicate column names that might have crept in during merges
+        if df.columns.duplicated().any():
+            self.logger.warning(f"⚠️ Removing duplicate columns: {df.columns[df.columns.duplicated()].unique().tolist()}")
+            df = df.loc[:, ~df.columns.duplicated()]
+            
         df["transaction_type"] = df["transaction_type"].astype(str).str.upper()
 
         # Treat both 'SALE' and 'SELL' as sell side
@@ -626,8 +636,8 @@ class TradingDataProcessor:
         df["_signed_qty"] = df.apply(signed_qty, axis=1)
 
         # --- SYMBOL-LEVEL NET QTY ---
-        symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
-        df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
+        symbol_net_map = df.groupby("symbol")["_signed_qty"].sum()
+        df["symbol_net_qty"] = df["symbol"].map(symbol_net_map)
 
 
         #--- add the logic to close the net option sell derivatives to 0 if they are out of money , given we have to find the stock spot and compute expiry spot and then on day of expiry we have to make it 0 if the open positions is not closed after expiry date. ---
