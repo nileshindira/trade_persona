@@ -24,6 +24,15 @@ class TradingDataProcessor:
             db_conf = self.config["database"]
             table_name = db_conf.get("table_name", "stock_data")
 
+            # --- Normalize & extract date range from input df ---
+            df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.date
+
+            start_date = df["trade_date"].min()
+            end_date = df["trade_date"].max()
+
+            if pd.isna(start_date) or pd.isna(end_date):
+                raise ValueError("Invalid trade_date values in input DataFrame")
+
             conn = psycopg2.connect(
                 dbname=db_conf["dbname"],
                 user=db_conf["user"],
@@ -38,11 +47,18 @@ class TradingDataProcessor:
                        t_score, f_score, total_score,
                        is_52week_high, is_52week_low, is_alltime_high,
                         is_alltime_low, is_event, atr, is_high_volume, is_news, news_category,
-                        market_behaviour, chart_charts
-                FROM {table_name};
+                        market_behaviour, chart_charts, sector_ema
+                FROM {table_name}
+                WHERE date BETWEEN %s AND %s;
             """
-            db_df = pd.read_sql(query, conn)
+
+            db_df = pd.read_sql(query, conn, params=(start_date, end_date))
             conn.close()
+
+            industry_sector_details_df = pd.read_excel("data/raw/industry_sector_detail.xlsx")
+            industry_sector_details_df.columns = industry_sector_details_df.columns.str.lower()
+            industry_sector_details_df["symbol"] = industry_sector_details_df["symbol"].str.upper()
+
 
             # Normalize column names
             db_df.columns = db_df.columns.str.lower()
@@ -71,6 +87,7 @@ class TradingDataProcessor:
             for i, row in df.iterrows():
                 trade_date = row["trade_date"]
                 candidates = []
+
 
                 for t in [row.get("token_0"), row.get("token_1"), row.get("token_2"), row.get("token_3")]:
                     if pd.notna(t):
@@ -102,10 +119,29 @@ class TradingDataProcessor:
                     merged_data = row.to_frame().T.reset_index(drop=True)
 
                 merged_rows.append(merged_data)
-
             final_df = pd.concat(merged_rows, ignore_index=True)
-            final_df.drop(columns=["token_0", "token_1", "token_2", "token_3"], inplace=True, errors="ignore")
+
             self.logger.info(f"✅ Added additional DB data to {len(df)} records.")
+            final_df = final_df.merge(
+                industry_sector_details_df[["symbol", "industry"]]
+                    .rename(columns={"symbol": "token_2"}),
+                on="token_2",
+                how="left"
+            )
+
+            # Now safe to drop tokens
+            final_df.drop(
+                columns=["token_0", "token_1", "token_2", "token_3"],
+                inplace=True,
+                errors="ignore"
+            )
+            final_df["industry_sector_ema"] = final_df.apply(
+                lambda r: r["sector_ema"].get(r["industry"])
+                if isinstance(r["sector_ema"], dict) else None,
+                axis=1
+            )
+            final_df.drop(columns=["sector_ema"], inplace=True)
+
             return final_df
 
         except Exception as e:
