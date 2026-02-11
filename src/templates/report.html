@@ -253,7 +253,33 @@
   <div id="charts_block" class="collapsible-content">
     <section id="charts" class="page-section">
       {% include "components/charts.html" %}
+
+      <!-- Market Behaviour & Industry Charts -->
+      <div class="row g-4 mb-4">
+        <div class="col-md-6">
+          <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-transparent border-0">
+              <h6 class="text-secondary fw-bold mb-0">MARKET BEHAVIOUR</h6>
+            </div>
+            <div class="card-body">
+              <canvas id="marketBehaviourChart" style="max-height: 300px;"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-transparent border-0">
+              <h6 class="text-secondary fw-bold mb-0">INDUSTRY / SECTOR SPLIT</h6>
+            </div>
+            <div class="card-body">
+              <canvas id="industryChart" style="max-height: 300px;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {% include "components/time_based_performance_chart.html" %}
+
     </section>
   </div>
 
@@ -613,6 +639,78 @@ SCRIPTS (same as before)
     }
   })();
   {% endif %}
+
+  // Market Behaviour Pie Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.market_behaviour_distribution %}
+  (function () {
+    const ctx = document.getElementById('marketBehaviourChart');
+    if (ctx) {
+      const data = report.web_data.charts.market_behaviour_distribution;
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: data.map(d => d.label),
+          datasets: [{
+            data: data.map(d => d.value),
+            backgroundColor: [
+              '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#fd7e14', '#20c997'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
+  // Industry Pie Chart
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.industry_distribution %}
+  (function () {
+    const ctx = document.getElementById('industryChart');
+    if (ctx) {
+      const data = report.web_data.charts.industry_distribution;
+
+      // Sort by value desc and take top 10, group others
+      let sorted = [...data].sort((a, b) => b.value - a.value);
+      let top10 = sorted.slice(0, 10);
+      let others = sorted.slice(10).reduce((acc, cur) => acc + cur.value, 0);
+
+      if (others > 0) {
+        top10.push({ label: 'Others', value: others });
+      }
+
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: top10.map(d => d.label),
+          datasets: [{
+            data: top10.map(d => d.value),
+            backgroundColor: [
+              '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+              '#858796', '#5a5c69', '#f8f9fc', '#4e73df', '#1cc88a', '#36b9cc'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10 } }
+          }
+        }
+      });
+    }
+  })();
+  {% endif %}
+
 
 
   // for scrolling

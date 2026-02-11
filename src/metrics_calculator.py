@@ -421,6 +421,32 @@ class TradingMetricsCalculator:
             metrics["option_equity_trade_pct"] = float(cluster_pct.get("OPTION-EQUITY", 0))
             metrics["option_index_trade_pct"] = float(cluster_pct.get("OPTION-INDEX", 0))
 
+        # ================================
+        # NEW – Market Behaviour & Industry Distributions for Pie Charts
+        # ================================
+        if "market_behaviour" in df.columns:
+            # Check if column has data
+            if not df["market_behaviour"].dropna().empty:
+                mb_counts = df["market_behaviour"].value_counts()
+                metrics["market_behaviour_distribution"] = [
+                    {"label": str(k), "value": int(v)}
+                    for k, v in mb_counts.items()
+                ]
+            else:
+                metrics["market_behaviour_distribution"] = []
+
+        if "industry" in df.columns:
+            # Check if column has data
+            if not df["industry"].dropna().empty:
+                ind_counts = df["industry"].value_counts()
+                metrics["industry_distribution"] = [
+                    {"label": str(k), "value": int(v)}
+                    for k, v in ind_counts.items()
+                ]
+            else:
+                metrics["industry_distribution"] = []
+
+
         return metrics
 
     # =========================================================

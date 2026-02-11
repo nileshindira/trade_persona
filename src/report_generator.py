@@ -140,6 +140,17 @@ class ReportGenerator:
         hard_flags = web.get("hard_flags", {})
         risk_severity = web.get("risk_severity", "LOW")
 
+        # Inject new chart data from metrics if available
+        if "charts" not in web:
+            web["charts"] = {}
+
+        if "market_behaviour_distribution" in metrics:
+            web["charts"]["market_behaviour_distribution"] = metrics["market_behaviour_distribution"]
+
+        if "industry_distribution" in metrics:
+            web["charts"]["industry_distribution"] = metrics["industry_distribution"]
+
+
         # Construct report with ALL possible keys to ensure compatibility
         return {
             "metadata": {
