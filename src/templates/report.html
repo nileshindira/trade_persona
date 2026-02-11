@@ -677,21 +677,12 @@ SCRIPTS (same as before)
     if (ctx) {
       const data = report.web_data.charts.industry_distribution;
 
-      // Sort by value desc and take top 10, group others
-      let sorted = [...data].sort((a, b) => b.value - a.value);
-      let top10 = sorted.slice(0, 10);
-      let others = sorted.slice(10).reduce((acc, cur) => acc + cur.value, 0);
-
-      if (others > 0) {
-        top10.push({ label: 'Others', value: others });
-      }
-
       new Chart(ctx, {
         type: 'pie',
         data: {
-          labels: top10.map(d => d.label),
+          labels: data.map(d => d.label),
           datasets: [{
-            data: top10.map(d => d.value),
+            data: data.map(d => d.value),
             backgroundColor: [
               '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
               '#858796', '#5a5c69', '#f8f9fc', '#4e73df', '#1cc88a', '#36b9cc'
@@ -703,7 +694,7 @@ SCRIPTS (same as before)
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { position: 'bottom', labels: { boxWidth: 10 } }
+            legend: { position: 'bottom' }
           }
         }
       });
