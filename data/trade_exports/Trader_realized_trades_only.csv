@@ -1,0 +1,1 @@
+trade_date,symbol,transaction_type,quantity,price,trade_value,charges,open,high,low,close,volume,t_score,f_score,total_score,is_52week_high,is_52week_low,is_alltime_high,is_alltime_low,trade_hour,trade_day_of_week,trade_month,symbol_net_qty,position_status,position_type,row_trade_category,pnl,holding_period_minutes

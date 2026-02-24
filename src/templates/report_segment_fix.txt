@@ -1,0 +1,68 @@
+
+  // 3. Segment (Symbol) Distribution (Donut with Filter)
+  {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
+  (function () {
+    const ctx = document.getElementById('segmentChart');
+    const filter = document.getElementById('segmentFilter');
+
+    if (ctx) {
+      const rawData = {{ report.web_data.charts.segment_distribution | tojson }};
+      // Sort by value descending
+      const sortedData = rawData.sort((a, b) => b.value - a.value);
+
+      let chartInstance = null;
+
+      const colors = [
+        '#4f46e5', '#34d399', '#f3ba2f', '#f87171', '#6366f1',
+        '#10b981', '#fbbf24', '#ef4444', '#8b5cf6', '#ec4899',
+        '#06b6d4', '#84cc16', '#a855f7', '#d946ef', '#f97316'
+      ];
+
+      function renderChart(limit) {
+        if (chartInstance) chartInstance.destroy();
+
+        let displayData = sortedData;
+        if (limit !== 'all') {
+          displayData = sortedData.slice(0, parseInt(limit));
+        }
+
+        chartInstance = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: displayData.map(d => d.asset_name),
+            datasets: [{
+              data: displayData.map(d => d.value),
+              backgroundColor: colors.slice(0, displayData.length),
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return context.label + ': ' + context.parsed + '%';
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      // Initial Render (Top 10)
+      renderChart(10);
+
+      // Event Listener
+      if (filter) {
+        filter.addEventListener('change', function (e) {
+          renderChart(e.target.value);
+        });
+      }
+    }
+  })();
+  {% endif %}
