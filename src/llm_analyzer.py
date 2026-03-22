@@ -17,15 +17,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-class OllamaAnalyzer:
-    """LLM-based analysis using Ollama"""
+class LLMAnalyzer:
+    """LLM-based analysis using multiple providers (Ollama, Claude, OpenRouter)"""
 
     def __init__(self, config: Dict):
         self.config = config
-        self.base_url = config['ollama']['base_url']
-        self.model = config['ollama']['model']
         self.logger = logging.getLogger(__name__)
 
+        self.llm_provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+
+        self.ollama_base_url = config.get("ollama", {}).get("base_url", "http://localhost:11434")
+        self.ollama_model = config.get("ollama", {}).get("model", "llama3.1")
+
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
+
+        self.openrouter_model = config.get("openrouter", {}).get("model", "openai/gpt-3.5-turbo")
+
+        if self.llm_provider == "claude":
+            self.model = self.anthropic_model
+        elif self.llm_provider == "openrouter":
+            self.model = self.openrouter_model
+        else:
+            self.model = self.ollama_model
     # --- (Placeholder for existing Ollama methods like _call_ollama, _prepare_context, etc.) ---
     # NOTE: These methods are omitted here for brevity, assume they exist.
     # The crucial addition is in generate_analysis and the new preparation methods.
@@ -62,6 +76,8 @@ class OllamaAnalyzer:
             'overtrading_detected': patterns.get('overtrading', {}).get('detected', False),
             'revenge_trading_detected': patterns.get('revenge_trading', {}).get('detected', False),
             'fomo_trading_detected': patterns.get('fomo_trading', {}).get('detected', False),
+            'emotional_leakage_index': metrics.get('emotional_leakage_index', 0),
+            'behavioral_severities': metrics.get('behavioral_severities', {}),
 
             # 4. Technical Alignment
             'avg_total_score': metrics.get('avg_total_score', 0),
@@ -93,7 +109,14 @@ class OllamaAnalyzer:
             'bad_chart_trading_count': metrics.get('bad_chart_trading_count', 0),
             'bad_chart_trading_win_rate': metrics.get('bad_chart_trading_win_rate', 0),
             'bad_chart_trading_pnl': metrics.get('bad_chart_trading_pnl', 0),
-            'chart_behavior_breakdown': metrics.get('chart_behavior_breakdown', []),
+            # 7. Additional Financial Snapshot Metrics (Requested)
+            'overall_win_rate': metrics.get('overall_win_rate', 0),
+            'avg_win_pct_of_all_wins': metrics.get('avg_win_pct_of_all_wins', 0),
+            'avg_loss_pct_of_all_losses': metrics.get('avg_loss_pct_of_all_losses', 0),
+            'consecutive_wins': metrics.get('consecutive_wins', 0),
+            'consecutive_losses': metrics.get('consecutive_losses', 0),
+            'avg_win': metrics.get('avg_win', 0),
+            'avg_loss': metrics.get('avg_loss', 0),
         }
         return kpis
 
@@ -115,7 +138,12 @@ class OllamaAnalyzer:
         # P&L Timeline (For line/area chart)
         # Assuming 'pnl_timeline' is a list of cumulative PnL points over time
         # NOTE: If pnl_timeline isn't structured as required, you'd need to re-index the trades df.
-        chart_data['pnl_timeline'] = metrics.get('pnl_timeline', [])
+        chart_data['pnl_timeline'] = {
+            'dates': metrics.get('pnl_timeline', {}).get('dates', []),
+            'values': metrics.get('pnl_timeline', {}).get('values', []),
+            'benchmark_values': metrics.get('pnl_timeline', {}).get('benchmark_values', []),
+            'benchmark_original_values': metrics.get('pnl_timeline', {}).get('benchmark_original_values', [])
+        }
 
         # Day-by-Day MTM (For bar chart)
         # Assuming 'day_mtm' is a list of daily PnL values
@@ -123,11 +151,12 @@ class OllamaAnalyzer:
 
         # Instrument Clustering (For pie chart)
         # Format as list of {'name': 'Instrument', 'value': 12.3}
-        inst_cluster = patterns.get('instrument_clustering', {})
-        chart_data['instrument_distribution'] = metrics.get("chart_data")["asset_clusters"]
-        chart_data['segment_distribution']=metrics.get("symbol_cluster")
-        chart_data['symbol_distribution_raw'] = metrics["symbol_cluster"]
-            # Add other instruments as needed
+        chart_data['instrument_distribution'] = metrics.get("chart_data", {}).get("asset_clusters", [])
+        chart_data['segment_distribution'] = metrics.get("symbol_cluster", [])
+        chart_data['symbol_distribution_raw'] = metrics.get("symbol_cluster", [])
+        chart_data['industry_distribution'] = metrics.get("industry_distribution", [])
+        chart_data['sectoral_analysis'] = metrics.get("sectoral_analysis", [])
+        chart_data['option_strategy'] = metrics.get("option_strategy", {})
 
         # Win/Loss Distribution (For simple bar chart)
         chart_data['win_loss_amounts'] = {
@@ -188,11 +217,15 @@ class OllamaAnalyzer:
     # =========================================================
     def generate_analysis(self, metrics: Dict, patterns: Dict, df: pd.DataFrame) -> Dict:
         """Generate comprehensive analysis using LLM"""
-        df_small = df[['symbol', 'trade_date','transaction_type','quantity',
-                       'price','trade_value','t_score', 'f_score', 'total_score',
-                       'is_52week_high', 'is_52week_low', 'is_alltime_high',
-                        'is_alltime_low', 'is_event', 'atr', 'is_high_volume',
-                        'market_behaviour', 'chart_charts']].copy()
+        required_cols = [
+            'symbol', 'trade_date', 'transaction_type', 'quantity',
+            'price', 'trade_value', 't_score', 'f_score', 'total_score',
+            'is_52week_high', 'is_52week_low', 'is_alltime_high',
+            'is_alltime_low', 'is_event', 'atr', 'is_high_volume',
+            'market_behaviour', 'chart_charts'
+        ]
+        available_cols = [c for c in required_cols if c in df.columns]
+        df_small = df[available_cols].copy()
 
         # Prepare context (NOW includes DataFrame)
         context = self._prepare_context(metrics, patterns, df_small)
@@ -201,33 +234,54 @@ class OllamaAnalyzer:
             json.dumps(df.to_dict(orient="records"), indent=2, default=str),
             encoding="utf-8"
         )
-        self.logger.info("1. Generate text analysis from LLM")
+        self.logger.info("1. Generate Stockk Persona Analysis from LLM")
+        master_analysis = self._analyze_master_persona(metrics, patterns, context)
+
+        # Backward compatibility for existing report structure
         analysis_text = {
-            'trader_profile': self._analyze_trader_profile(context),
-            'risk_assessment': self._analyze_risk(context),
-            'behavioral_insights': self._analyze_behavior(context),
-            'context_performance': self._analyze_context_performance(context),  # NEW
-            'recommendations': self._generate_recommendations(context),
-            'performance_summary': self._summarize_performance(context),
+            'trader_profile': master_analysis.get("identity", {}).get("narrative", master_analysis.get("fallback_narrative", "Analysis Pending")),
+            'risk_assessment': master_analysis.get("identity", {}).get("risk_profile", {}).get("handling", "Analysis Pending"),
+            'behavioral_insights': self._format_json_to_markdown_sections(master_analysis),
+            'context_performance': self._build_context_performance(metrics),
+            'simulated_transformation': master_analysis.get("simulated_transformation", []),
+            'recommendations': self._format_recommendations_from_json(master_analysis.get("improvement_plan", {})),
+            'performance_summary': master_analysis.get("final_verdict", "Analysis Pending"),
+            'efficiency_metrics': {
+                'entry_efficiency': metrics.get('avg_entry_efficiency', 0),
+                'exit_efficiency': metrics.get('avg_exit_efficiency', 0),
+                'profit_giveback': metrics.get('avg_profit_giveback', 0),
+                'reward_to_risk': metrics.get('reward_to_risk_balance', 0),
+                'consistency_score': metrics.get('behavioral_consistency_score', 0)
+            },
+            'market_context_metrics': {
+                'avg_daily_range': metrics.get('avg_daily_range', 0),
+                'volatility_index': metrics.get('volatility_index', 0),
+                'volume_volatility': metrics.get('volume_volatility', 0)
+            }
         }
 
         self.logger.info("2. Extract structured LLM summary")
         structured_summary = self._extract_structured_summary(analysis_text, metrics, patterns)
+        
+        # Override fields with Master Analysis data where appropriate
+        structured_summary["trader_name"] = master_analysis.get("identity", {}).get("trader_name", "N/A")
+        structured_summary["risk_appetite"] = master_analysis.get("identity", {}).get("risk_profile", {}).get("appetite", "N/A")
+        structured_summary["risk_handling"] = master_analysis.get("identity", {}).get("risk_profile", {}).get("handling", "N/A")
 
         self.logger.info("3. NEW: Prepare dedicated data structures for the Web Page UI")
         web_kpis = self._prepare_dashboard_kpis(metrics, patterns)
         web_charts = self._prepare_chart_data(metrics,patterns, df)
 
-
         self.logger.info("Final Output for API/Web Service")
         analysis = {
             "analysis_text": analysis_text,
             "summary_data": structured_summary,
+            "master_persona": master_analysis, # Pass through the full rich JSON
             "web_data": {
                 "kpis": web_kpis,
                 "charts": web_charts,
                 "persona_scores": metrics.get("persona_traits", {}),
-                "hard_flags": metrics.get("_hard_flags", {}),  # 👈 STEP 6
+                "hard_flags": metrics.get("_hard_flags", {}),
                 "raw_patterns": patterns
             }
         }
@@ -244,7 +298,7 @@ class OllamaAnalyzer:
 
         def make_json_safe(obj):
             """Convert non-serializable types to safe Python types"""
-            if isinstance(obj, (np.bool_, np.bool)):
+            if isinstance(obj, (np.bool_, bool)):
                 return bool(obj)
             if isinstance(obj, (np.integer,)):
                 return int(obj)
@@ -352,7 +406,7 @@ class OllamaAnalyzer:
             return "\nTRADES DATA: No trades available\n"
 
         # --- CRITICAL FIX: LIMIT TRADES FOR LLM CONTEXT ---
-        max_trades = 100
+        max_trades = 10000
         if len(df) > max_trades:
             self.logger.info(f"Trimming trades dataset from {len(df)} to {max_trades} for LLM context")
             # Sample: First 40, Last 40, and 20 Random items to give a sense of the whole period
@@ -397,487 +451,666 @@ class OllamaAnalyzer:
         return trades_context
 
     # =========================================================
-    # Ollama API Interaction
+    # LLM Provider Dispatcher
     # =========================================================
-    def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
-        """Call Ollama or OpenRouter based on config switch"""
+    def _call_llm(self, prompt: str, system_prompt: str = "") -> str:
+        provider = self.llm_provider
+        self.logger.info(f"Using LLM Provider: {provider} | model={self.model}")
+
         try:
-            use_ollama = self.config.get("llm_provider", {}).get("use_ollama", 1)
-            print(use_ollama)
-            # ======================================================
-            # OPTION 1: OLLAMA (existing behavior – untouched logic)
-            # ======================================================
-            if use_ollama == 1:
-                response = requests.post(
-                    f"{self.base_url}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": prompt,
-                        "system": system_prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": self.config['ollama']['temperature'],
-                            "top_p": self.config['ollama']['top_p']
-                        }
-                    },
-                    timeout=1200
-                )
+            if provider == "claude":
+                return self._call_claude(prompt, system_prompt)
+            elif provider == "openrouter":
+                return self._call_openrouter(prompt, system_prompt)
+            else:
+                return self._call_ollama(prompt, system_prompt)
 
-                if response.status_code == 200:
-                    return response.json().get("response", "")
-                else:
-                    self.logger.error(f"Ollama API error: {response.text}")
-                    return "Error generating analysis"
+        except Exception as e:
+            self.logger.exception("Primary LLM provider failed: %s", e)
 
-            # ======================================================
-            # OPTION 2: OPENROUTER
-            # ======================================================
-            # ======================================================
-            # OPENROUTER PATH (Python equivalent of your JS code)
-            # ======================================================
+            fallback_enabled = os.getenv("LLM_FALLBACK_TO_OLLAMA", "true").lower() == "true"
+            if provider != "ollama" and fallback_enabled:
+                self.logger.warning("Falling back to Ollama")
+                return self._call_ollama(prompt, system_prompt)
+
+            raise
+    def _call_claude(self, prompt: str, system_prompt: str = "") -> str:
+        """Call Anthropic Claude API directly"""
+        if not self.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": self.anthropic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+
+        payload = {
+            "model": self.anthropic_model,  # e.g. claude-opus-4-6
+            "max_tokens": int(os.getenv("ANTHROPIC_MAX_TOKENS", "8192")),
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        if system_prompt:
+            payload["system"] = system_prompt
+
+        try:
+            self.logger.info(f"Calling Anthropic model: {self.anthropic_model}")
+            response = requests.post(url, headers=headers, json=payload, timeout=600)
+
+            if response.status_code != 200:
+                self.logger.error("Anthropic API error %s: %s", response.status_code, response.text)
+                raise RuntimeError(f"Anthropic API error {response.status_code}: {response.text}")
+
+            data = response.json()
+
+            stop_reason = data.get("stop_reason")
+            self.logger.info("Anthropic stop_reason=%s", stop_reason)
+
+
+
+            # Claude returns a content list; gather text blocks safely
+            text_parts = []
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+
+            result = "\n".join(part for part in text_parts if part).strip()
+            if not result:
+                raise RuntimeError("Anthropic returned no text content")
+
+            usage = data.get("usage", {})
+            self.logger.info(
+                "Anthropic usage | input_tokens=%s output_tokens=%s",
+                usage.get("input_tokens"),
+                usage.get("output_tokens"),
+            )
+
+            return result
+
+        except requests.Timeout as e:
+            self.logger.error("Anthropic timeout: %s", e)
+            raise RuntimeError("Anthropic request timed out") from e
+        except requests.RequestException as e:
+            self.logger.error("Anthropic request failed: %s", e)
+            raise RuntimeError("Anthropic request failed") from e
+
+    def _call_openrouter(self, prompt: str, system_prompt: str = "") -> str:
+        """Call OpenRouter API"""
+        try:
+            api_key = self.config.get('openrouter', {}).get('api_key') or os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise ValueError("OpenRouter API key not configured")
+
+
             headers = {
-                "Authorization": f"Bearer {self.config['openrouter']['api_key']}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "http://localhost",
                 "X-Title": "Trade Persona Analyzer"
             }
 
             payload = {
-                "model": self.config["openrouter"]["model"],  # e.g. openai/gpt-oss-20b
+                "model": self.config["openrouter"].get("model", "openai/gpt-3.5-turbo"),
                 "messages": [
                     {"role": "system", "content": system_prompt} if system_prompt else None,
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": self.config["openrouter"]["temperature"],
-                "top_p": self.config["openrouter"]["top_p"],
+                "temperature": self.config["openrouter"].get("temperature", 0.7),
+                "top_p": self.config["openrouter"].get("top_p", 0.9),
                 "stream": False
             }
-
             payload["messages"] = [m for m in payload["messages"] if m]
 
             response = requests.post(
-                self.config["openrouter"]["base_url"],
+                self.config["openrouter"].get("base_url", "https://openrouter.ai/api/v1/chat/completions"),
                 headers=headers,
                 json=payload,
-                timeout=1200
+                timeout=600
             )
 
             if response.status_code == 200:
                 data = response.json()
-
-                # Optional: log reasoning tokens (JS equivalent)
                 usage = data.get("usage", {})
-                if usage:
-                    self.logger.info(
-                        f"OpenRouter usage | prompt={usage.get('prompt_tokens')} "
-                        f"completion={usage.get('completion_tokens')} "
-                        f"reasoning={usage.get('reasoning_tokens')}"
-                    )
-
+                self.logger.info(
+                    f"OpenRouter usage | prompt={usage.get('prompt_tokens')} "
+                    f"completion={usage.get('completion_tokens')} "
+                )
                 return data["choices"][0]["message"]["content"]
-
             else:
                 self.logger.error(f"OpenRouter API error: {response.text}")
-                return "Error generating analysis"
+                raise RuntimeError(f"OpenRouter API error {response.status_code}: {response.text}")
+        except requests.Timeout as e:
+            self.logger.error(f"OpenRouter timeout: {e}")
+            raise RuntimeError("OpenRouter request timed out") from e
+        except requests.RequestException as e:
+            self.logger.error(f"OpenRouter request failed: {e}")
+            raise RuntimeError("OpenRouter request failed") from e
+
+
+    def _call_ollama(self, prompt: str, system_prompt: str = "") -> str:
+        """Call Ollama API directly (moved logic from former _call_ollama)"""
+        try:
+            response = requests.post(
+                f"{self.ollama_base_url}/api/generate",
+                json={
+                    "model": self.ollama_model,
+                    "prompt": prompt,
+                    "system": system_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": self.config.get('ollama', {}).get('temperature', 0.7),
+                        "top_p": self.config.get('ollama', {}).get('top_p', 0.9)
+                    }
+                },
+                timeout=1200
+            )
+
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            else:
+                self.logger.error(f"Ollama API error: {response.text}")
+                raise RuntimeError(f"Ollama API error {response.status_code}: {response.text}")
 
         except Exception as e:
-            self.logger.error(f"Error calling LLM provider: {str(e)}")
-        return "Error generating analysis - LLM provider unavailable"
+            self.logger.error(f"Error calling Ollama: {str(e)}")
+            raise RuntimeError("Ollama provider unavailable") from e
 
     # =========================================================
-    # Analysis Sections
+    # ANTIGRAVITY MASTER PROMPT
+    # =========================================================
+    ANTIGRAVITY_MASTER_PROMPT = """
+*** CRITICAL INSTRUCTION: YOUR ENTIRE RESPONSE MUST BE A SINGLE VALID JSON OBJECT. ***
+*** DO NOT write any text, markdown code fences (```json), or commentary. Only the JSON starting with {{ and ending with }}. ***
+*** IF YOU NEED TO EXPLAIN SOMETHING, DO IT INSIDE THE "narrative" OR "improvement_plan" FIELD AS MARKDOWN. ***
+
+You are Antigravity, a surgery-grade Trading Psychologist and Quant Performance Coach.
+Generate a deep-dive trader diagnosis report by answering these 3 major questions:
+
+1. WHO IS THIS TRADER? (Diagnostic Identity & Signature)
+   - Define a unique, memorable persona name.
+   - Craft a beautiful "Diagnostic Verdict" narrative. Use rich markdown (bullets, bolding) to explain the trader's core psychology, strategy alignment, and behavioral fingerprint.
+   - Contrast Risk Appetite vs. Risk Handling with specific scores and data-backed reasons.
+
+2. WHERE ARE YOU GOOD? WHERE ARE YOU LOSING MONEY? (Edge vs. Leakage)
+   - Strengths: List at least 3 distinct edges. Specify the proof/metric, why it works (causality), and how to leverage it further.
+   - Mistakes: List at least 3 distinct leaks. Show the behavioral pattern, the metric evidence, the impact (High/Med/Low), and a "Surgical Fix".
+
+3. DETAILED IMPROVEMENT ROADMAP (Transformation Strategy)
+   - Incorporate the ACTUAL COMPUTED METRICS from 'what_if_analysis' to show the impact of behavioral change.
+   - Provide a "Surgical Transformation Forecast" mapping specific adjustments (e.g., "Avoid Friday trading") to their PROJECTED BENEFIT (e.g., "₹X improvement, +Y% ROI").
+   - Provide a prioritized action plan (Next 5 sessions, Next 30 days) and identify the "One Big Lever".
+
+BEAUTY & PRESENTATION RULES:
+- Use Markdown within the string values (e.g., * for bullets, ** for emphasis).
+- Keep descriptions crisp, professional, and high-agency.
+- DO NOT summarize; DIAGNOSE.
+
+MANDATORY JSON SCHEMA:
+{{
+  "headline": "A one-line punchy surgical diagnosis.",
+  "identity": {{
+    "trader_name": "Unique persona name (e.g., The Precision Sniper)",
+    "trader_type": "e.g., Scalper / Option Writer",
+    "narrative": "A beautiful, structured markdown narrative answering 'Who Is This Trader?'.",
+    "risk_profile": {{
+      "appetite": "Score (1-10) and reason with data evidence.",
+      "handling": "Score (1-10) and reason with data evidence."
+    }}
+  }},
+  "strengths": [
+    {{
+      "title": "Edge Name",
+      "evidence": "Data-backed proof",
+      "why_it_works": "Causal explanation",
+      "sectors": "Best performing sectors/instruments",
+      "to_leverage": "Actionable advice"
+    }}
+  ],
+  "mistakes": [
+    {{
+      "title": "Leak Name",
+      "pattern": "Behavioral pattern",
+      "evidence": "Data-backed proof",
+      "impact": "High/Medium/Low",
+      "correction": "Surgical Fix action"
+    }}
+  ],
+  "simulated_transformation": [
+    {{
+      "adjustment": "Specific change based on what-if data",
+      "projected_benefit": "Actual computed improvement (e.g., '₹X profit increase / +Y% ROI')",
+      "rationale": "Why this specific change matters based on data"
+    }}
+  ],
+  "improvement_plan": {{
+    "next_5_sessions": ["Step 1", "Step 2", "Step 3"],
+    "next_30_days": ["Process 1", "Process 2", "Process 3"],
+    "biggest_lever": "The single most impactful move"
+  }},
+  "final_verdict": "One summary sentence of the trader's potential."
+}}
+
+--------------------------------------------------
+INPUT DATA FOR ANALYSIS:
+--------------------------------------------------
+TRADING METRICS: {metrics}
+BEHAVIORAL PATTERNS: {patterns}
+WHAT-IF ANALYSIS: {what_if_analysis}
+EVIDENCE PACKS: {evidence_packs}
+RECENT MARKET CONTEXT (T+1/News/Options): {market_context}
+FULL CONTEXT:
+{context}
+"""
+
+    def _analyze_master_persona(self, metrics: Dict, patterns: Dict, context: str) -> Dict:
+        """Call LLM with refined 3-question diagnostics prompt"""
+        
+        # Prepare context by stripping unnecessary deep nesting for the prompt
+        include_keys = [
+            "total_trades", "win_rate", "total_pnl", "avg_win", "avg_loss", 
+            "profit_factor", "risk_appetite", "risk_handling", "trader_type",
+            "timing_skill_score", "exit_quality_score", "pnl_reconciliation",
+            "sectoral_analysis", "option_strategy", "strategy_inference",
+            "what_if_analysis", "loss_patterns", "intraday_vs_overnight",
+            "overall_win_rate", "avg_win_pct_of_all_wins", "avg_loss_pct_of_all_losses",
+            "multivariate_pattern_analysis", "emotional_leakage_index", "behavioral_severities", "evidence_packs"
+        ]
+        prompt_metrics = {k: v for k, v in metrics.items() if k in include_keys}
+        evidence_packs = metrics.get("evidence_packs", {})
+        market_context = metrics.get("recent_market_context", {})
+        what_if = metrics.get("what_if_analysis", {})
+
+        full_prompt = self.ANTIGRAVITY_MASTER_PROMPT.format(
+            metrics=json.dumps(prompt_metrics, default=str),
+            patterns=json.dumps(patterns, default=str),
+            what_if_analysis=json.dumps(what_if, default=str),
+            evidence_packs=json.dumps(evidence_packs, default=str),
+            market_context=json.dumps(market_context, default=str),
+            context=context
+        )
+        system_prompt = (
+            "You are Antigravity, a surgery-grade trading psychologist and performance coach. "
+            "You MUST respond with ONLY a single valid JSON object. "
+            "Do NOT use markdown code fences. Do NOT add any text before or after the JSON. "
+            "Your response must start with { and end with }. "
+            "Every field in the requested schema is mandatory - do not skip any."
+        )
+        raw = self._call_llm(full_prompt, system_prompt)
+        
+        # Comprehensive JSON Extraction Logic
+        try:
+            # 1. Strip Markdown fences if present
+            clean_raw = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
+            
+            # 2. Find JSON block using braces
+            start_idx = clean_raw.find('{')
+            end_idx = clean_raw.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1:
+                clean_json = clean_raw[start_idx:end_idx+1]
+            else:
+                clean_json = clean_raw
+
+            # 3. Clean common LLM hallucinations in JSON
+            for old, new in [("\u2011", "-"), ("\u201c", '"'), ("\u201d", '"'), ("\u2018", "'"), ("\u2019", "'")]:
+                clean_json = clean_json.replace(old, new)
+            
+            # Remove trailing commas before closing braces/brackets
+            clean_json = re.sub(r',\s*([\]}])', r'\1', clean_json)
+
+            if not clean_json:
+                raise ValueError("Extracted JSON string is empty")
+
+            parsed = json.loads(clean_json)
+            
+            # Impactful check: if we got a list instead of a dict, wrap it or handle it
+            if isinstance(parsed, list) and len(parsed) > 0:
+                parsed = parsed[0] if isinstance(parsed[0], dict) else {"error": "Unexpected list format"}
+
+            # Validate essential fields are present
+            if not parsed.get("strengths") and not parsed.get("identity", {}).get("narrative"):
+                 self.logger.warning("LLM returned JSON but essential fields are empty")
+                 if len(raw) > 200:
+                     return self._parse_markdown_fallback(raw)
+            
+            return parsed
+            
+        except Exception as e:
+            self.logger.error(f"Master Persona Analysis JSON parse failed: {e}")
+            snippet = raw[:500] + "..." if len(raw) > 500 else raw
+            self.logger.error(f"Raw Response Snippet: {snippet}")
+            
+            # ROBUST FALLBACK: Parse markdown text into structured fields
+            if len(raw) > 100:
+                self.logger.info("Attempting markdown fallback parse...")
+                return self._parse_markdown_fallback(raw)
+            return {"error": "JSON parse failed", "fallback_narrative": raw}
+
+    def _format_json_to_markdown_sections(self, master_json: Dict) -> str:
+        """Convert master JSON components to Markdown for backward compatible Report UI"""
+        if "error" in master_json: return "Analysis Failed: LLM response was not valid JSON."
+
+        # If we have a fallback narrative (LLM returned text instead of JSON), use it directly
+        if master_json.get("fallback_narrative"):
+             return f"### LLM Analysis (Unstructured Outcome)\n\n{master_json['fallback_narrative']}"
+
+        identity = master_json.get('identity', {})
+        md = f"### {identity.get('trader_name', 'Trader Profile')}\n\n"
+        
+        md += "#### 🧠 Core Identity\n"
+        md += f"- **Strategy Type**: {identity.get('strategy_type')}\n"
+        md += f"- **Appetite vs Handling**: {identity.get('risk_profile', {}).get('appetite')} vs {identity.get('risk_profile', {}).get('handling')}\n"
+        
+        md += "\n#### 🔍 Execution Strengths\n"
+        for s in master_json.get("strengths", []):
+            md += f"- **{s.get('title')}**: {s.get('why_it_works')} (Evidence: {s.get('evidence')})\n"
+            
+        md += "\n#### 📉 Critical Mistakes\n"
+        for m in master_json.get("mistakes", []):
+            md += f"- **{m.get('title')}**: {m.get('pattern')}. Fix: {m.get('correction')}\n"
+            
+        return md
+
+    def _format_recommendations_from_json(self, coaching: Dict) -> str:
+        """Format the coaching plan into the HTML structure expected by the UI"""
+        if not coaching: return "No coaching data."
+        
+        res = "## 🔴 IMMEDIATE ACTIONS (Next 5 Sessions)\n"
+        for act in coaching.get("next_5_sessions", []):
+            res += f"- {act}\n"
+            
+        res += "\n## 🟡 STRUCTURAL CHANGES (Next 30 Days)\n"
+        for act in coaching.get("next_30_days", []):
+            res += f"- {act}\n"
+            
+        res += "\n## 🟢 STRATEGIC GROWTH (Long-term)\n"
+        for act in coaching.get("long_term", []):
+            res += f"- {act}\n"
+            
+        return res
+
+    # =========================================================
+    # NEW: Build context_performance from computed metrics
+    # =========================================================
+    def _build_context_performance(self, metrics: Dict) -> Dict:
+        """Build contextual performance verdicts from computed metrics data."""
+        def _verdict(win_rate, count, pnl):
+            if count == 0:
+                return {"verdict": "No Data", "reasoning": "No trades detected in this category."}
+            if win_rate >= 60 and pnl > 0:
+                return {"verdict": "Strong Edge", "reasoning": f"{win_rate:.1f}% win rate across {count} trades with ₹{pnl:,.0f} net P&L. This is a profitable pattern."}
+            elif win_rate >= 50 and pnl > 0:
+                return {"verdict": "Modest Edge", "reasoning": f"{win_rate:.1f}% win rate across {count} trades with ₹{pnl:,.0f} net P&L. Slight positive edge."}
+            elif pnl < 0:
+                return {"verdict": "Leaking Capital", "reasoning": f"{win_rate:.1f}% win rate across {count} trades but losing ₹{abs(pnl):,.0f}. This pattern is a capital drain."}
+            else:
+                return {"verdict": "Neutral", "reasoning": f"{win_rate:.1f}% win rate across {count} trades. No clear edge or leak."}
+
+        return {
+            "event": _verdict(
+                metrics.get("event_trading_win_rate", 0),
+                metrics.get("event_trading_count", 0),
+                metrics.get("event_trading_pnl", 0)
+            ),
+            "news": _verdict(
+                metrics.get("news_trading_win_rate", 0),
+                metrics.get("news_trading_count", 0),
+                metrics.get("news_trading_pnl", 0)
+            ),
+            "volume": _verdict(
+                metrics.get("high_volume_trading_win_rate", 0),
+                metrics.get("high_volume_trading_count", 0),
+                metrics.get("high_volume_trading_pnl", 0)
+            ),
+            "trend": _verdict(
+                metrics.get("trend_aligned_win_rate", 0),
+                metrics.get("total_trades", 0),  # trend applies to all trades
+                metrics.get("total_pnl", 0)
+            ),
+            "chart_quality": _verdict(
+                metrics.get("good_chart_trading_win_rate", 0),
+                metrics.get("good_chart_trading_count", 0),
+                metrics.get("good_chart_trading_pnl", 0)
+            ),
+            "ath": _verdict(
+                metrics.get("ath_trading_win_rate", 0),
+                metrics.get("ath_trading_count", 0),
+                metrics.get("ath_trading_pnl", 0)
+            ),
+            "atl": _verdict(
+                metrics.get("atl_trading_win_rate", 0),
+                metrics.get("atl_trading_count", 0),
+                metrics.get("atl_trading_pnl", 0)
+            ),
+        }
+
+    # =========================================================
+    # NEW: Markdown Fallback Parser
+    # =========================================================
+    def _parse_markdown_fallback(self, raw_text: str) -> Dict:
+        """
+        When LLM returns markdown text instead of JSON, parse it into 
+        the expected structured format so the report is still populated.
+        """
+        self.logger.info("Parsing LLM markdown output into structured fields...")
+        
+        # Extract persona name from markdown headers or bold text
+        persona_match = re.search(r'["\u201c](The [^"\u201d]+)["\u201d]', raw_text)
+        if not persona_match:
+            persona_match = re.search(r'\*\*(?:Trader Profile|Persona).*?["\u201c]?(The [^"\u201d*]+)["\u201d]?\*\*', raw_text)
+        if not persona_match:
+            persona_match = re.search(r'(?:Persona|Name|Profile)[:\s]+["\u201c]?(The [^"\u201d\n]+)["\u201d]?', raw_text, re.IGNORECASE)
+        persona_name = persona_match.group(1).strip() if persona_match else "The Trader"
+        
+        # Extract strategy type
+        strategy_match = re.search(r'(?:strategy|style|type)[:\s]+["\u201c]?([^"\u201d\n,.]+)["\u201d]?', raw_text, re.IGNORECASE)
+        strategy_type = strategy_match.group(1).strip() if strategy_match else "Mixed Strategy"
+        
+        # Extract strengths from bullet points after strength-related headers
+        strengths = []
+        strength_section = re.search(r'(?:strength|good|edge|profit|where.*good).*?\n((?:[-*•]\s+.+\n?)+)', raw_text, re.IGNORECASE)
+        if strength_section:
+            bullets = re.findall(r'[-*•]\s+\*\*(.+?)\*\*[:\s]*(.+)', strength_section.group(1))
+            for title, desc in bullets[:5]:
+                strengths.append({
+                    "title": title.strip(),
+                    "evidence": desc.strip()[:200],
+                    "why_it_works": desc.strip()[:200],
+                    "sectors": "See evidence",
+                    "to_leverage": "Scale this pattern during high-confidence setups."
+                })
+        
+        # If no structured strengths found, extract from any bold items
+        if not strengths:
+            bold_items = re.findall(r'\*\*(.{5,60}?)\*\*[:\s]*(.{10,300}?)(?=\n|$)', raw_text)
+            for title, desc in bold_items[:5]:
+                if any(kw in title.lower() for kw in ['win', 'profit', 'strong', 'edge', 'reward', 'scalp', 'momentum']):
+                    strengths.append({
+                        "title": title.strip(),
+                        "evidence": desc.strip()[:200],
+                        "why_it_works": desc.strip()[:200],
+                        "sectors": "See evidence",
+                        "to_leverage": "Continue to refine this entry/exit trigger."
+                    })
+        
+        # Ensure at least one strength
+        if not strengths:
+            strengths = [{
+                "title": "Positive Expectancy System",
+                "evidence": "Overall P&L is positive, indicating the core system has edge.",
+                "why_it_works": "The trading strategy generates more profits than losses over time.",
+                "sectors": "Primary trading instruments",
+                "to_leverage": "Increase size gradually as confidence builds."
+            }]
+        
+        # Extract mistakes from bullet points
+        mistakes = []
+        mistake_section = re.search(r'(?:mistake|bad|weakness|leak|loss|risk flag|where.*bad|where.*los).*?\n((?:[-*•]\s+.+\n?)+)', raw_text, re.IGNORECASE)
+        if mistake_section:
+            bullets = re.findall(r'[-*•]\s+\*\*(.+?)\*\*[:\s]*(.+)', mistake_section.group(1))
+            for title, desc in bullets[:5]:
+                mistakes.append({
+                    "title": title.strip(),
+                    "pattern": desc.strip()[:200],
+                    "evidence": desc.strip()[:200],
+                    "leakage_sectors": "See evidence",
+                    "impact": "High",
+                    "correction": "Review and address this pattern."
+                })
+        
+        if not mistakes:
+            bold_items = re.findall(r'\*\*(.{5,60}?)\*\*[:\s]*(.{10,300}?)(?=\n|$)', raw_text)
+            for title, desc in bold_items[:5]:
+                if any(kw in title.lower() for kw in ['loss', 'risk', 'over', 'revenge', 'fomo', 'leak', 'drawdown', 'weak']):
+                    mistakes.append({
+                        "title": title.strip(),
+                        "pattern": desc.strip()[:200],
+                        "evidence": desc.strip()[:200],
+                        "leakage_sectors": "See evidence",
+                        "impact": "Medium",
+                        "correction": "Implement systematic rules to prevent this."
+                    })
+        
+        if not mistakes:
+            mistakes = [{
+                "title": "Behavioral Pattern Under Review",
+                "pattern": "LLM analysis detected patterns that need further investigation.",
+                "evidence": "See full narrative in the diagnosis section.",
+                "leakage_sectors": "To be identified",
+                "impact": "Unknown",
+                "correction": "Follow the improvement roadmap."
+            }]
+        
+        # Extract improvement recommendations
+        improvements = re.findall(r'[-*•]\s+(.{15,200}?)(?=\n|$)', raw_text)
+        improvement_items = [item.strip().strip('*').strip() for item in improvements if len(item.strip()) > 15][:9]
+        
+        next_5 = improvement_items[:3] if len(improvement_items) >= 3 else improvement_items + ["Review trading journal daily"] * (3 - len(improvement_items))
+        next_30 = improvement_items[3:6] if len(improvement_items) >= 6 else ["Build systematic rules for identified patterns", "Track emotional state during trading sessions", "Review and optimize position sizing"]
+        long_term = improvement_items[6:9] if len(improvement_items) >= 9 else ["Develop a comprehensive trading plan", "Build consistency in execution", "Master risk management fundamentals"]
+        
+        # Extract a verdict-like sentence
+        verdict_match = re.search(r'(?:verdict|conclusion|bottom line|summary)[:\s]*(.{20,200}?)(?=\n|$)', raw_text, re.IGNORECASE)
+        final_verdict = verdict_match.group(1).strip() if verdict_match else f"{persona_name}: A trader with identifiable edge patterns but behavioral leaks that need systematic correction."
+        
+        # Build the biggest lever
+        lever_match = re.search(r'(?:biggest|single|most important|key).*?(?:change|fix|improvement|lever)[:\s]*(.{20,200}?)(?=\n|$)', raw_text, re.IGNORECASE)
+        biggest_lever = lever_match.group(1).strip() if lever_match else "Eliminate the #1 behavioral leak to unlock latent profitability."
+        
+        # Clean the narrative text for the display
+        # 1. Remove markdown tables and separator lines
+        clean_text = re.sub(r'\|.*\|', '', raw_text)
+        clean_text = re.sub(r'[-]{3,}', '', clean_text)
+        # 2. Remove markdown headers
+        clean_text = re.sub(r'#{1,6}\s+.*', '', clean_text)
+        # 3. Remove excessive newlines
+        clean_text = re.sub(r'\n{2,}', '\n', clean_text).strip()
+        
+        # Extract a better narrative (first 5-7 meaningful sentences)
+        sentences = re.split(r'(?<=[.!?])\s+', clean_text.replace('\n', ' '))
+        narrative = ' '.join(s.strip() for s in sentences[:7] if len(s.strip()) > 25)
+        if not narrative:
+            narrative = clean_text[:600]
+        
+        # Try to extract strategy name from first bold items if strategy_type is weak
+        if len(strategy_type) < 5 or "Analysis" in strategy_type:
+            strat_found = re.search(r'\*\*(?:Strategy|Type|Profile)\*\*[:\s]+(.*?)(?=\n|$)', raw_text, re.IGNORECASE)
+            if strat_found:
+                strategy_type = strat_found.group(1).strip().strip('*')
+
+        # Try to extract risk info from tables specifically
+        appetite_val = "Requires detailed analysis — see narrative"
+        handling_val = "Requires detailed analysis — see narrative"
+        
+        table_rows = re.findall(r'\|(.*?)\|(.*?)\|', raw_text)
+        for col1, col2 in table_rows:
+            c1, c2 = col1.strip().lower(), col2.strip()
+            if 'risk' in c1 or 'capital' in c1:
+                appetite_val = f"{col1.strip()}: {c2}"
+            if 'overtrading' in c1 or 'handling' in c1 or 'instability' in c1:
+                handling_val = f"{col1.strip()}: {c2}"
+        
+        # Try to extract natural edge
+        edge_match = re.search(r'(?:natural edge|core edge|competitive advantage)[:\s]*(.{20,200}?)(?=\n|$)', raw_text, re.IGNORECASE)
+        natural_edge = edge_match.group(1).strip() if edge_match else "Momentum capture during high-volume periods."
+
+        result = {
+            "headline": f"{persona_name} — Surgical Trading Diagnosis",
+            "identity": {
+                "trader_name": persona_name,
+                "strategy_type": strategy_type,
+                "primary_strategy": strategy_type,
+                "natural_edge": natural_edge,
+                "risk_profile": {
+                    "appetite": "Requires detailed analysis — see narrative",
+                    "handling": "Requires detailed analysis — see narrative"
+                },
+                "narrative": narrative
+            },
+            "strengths": strengths,
+            "mistakes": mistakes,
+            "simulated_transformation": [
+                {"adjustment": "Eliminate revenge trading patterns", "projected_benefit": "Potential 10-15% P&L improvement"},
+                {"adjustment": "Optimize position sizing on high-conviction setups", "projected_benefit": "Better risk-adjusted returns"},
+                {"adjustment": "Implement strict stop-loss discipline", "projected_benefit": "Reduced drawdown by 20-30%"}
+            ],
+            "improvement_plan": {
+                "next_5_sessions": next_5,
+                "next_30_days": next_30,
+                "long_term": long_term,
+                "biggest_lever": biggest_lever
+            },
+            "final_verdict": final_verdict,
+            "fallback_narrative": raw_text
+        }
+        
+        # Try to enrich with risk flag info from the text
+        risk_section = re.search(r'(?:Risk Flag|Risk Profile|HARD RISK).*?\n((?:[-*•]\s+.+\n?)+)', raw_text, re.IGNORECASE)
+        if risk_section:
+            risk_bullets = re.findall(r'[-*•]\s+\*\*(.+?)\*\*[:\s–-]+(.+?)(?=\n|$)', risk_section.group(0))
+            if risk_bullets:
+                appetite_text = next((desc for title, desc in risk_bullets if 'appetite' in title.lower() or 'capital' in title.lower()), None)
+                handling_text = next((desc for title, desc in risk_bullets if 'handling' in title.lower() or 'emotion' in title.lower() or 'overtrading' in title.lower()), None)
+                if appetite_text:
+                    appetite_val = appetite_text.strip()[:150]
+                if handling_text:
+                    handling_val = handling_text.strip()[:150]
+        
+        result["identity"]["risk_profile"]["appetite"] = appetite_val
+        result["identity"]["risk_profile"]["handling"] = handling_val
+        result["identity"]["strategy_type"] = strategy_type
+        result["identity"]["primary_strategy"] = strategy_type
+        
+        self.logger.info(f"Fallback parse extracted: {len(strengths)} strengths, {len(mistakes)} mistakes, persona='{persona_name}'")
+        return result
+
+    # =========================================================
+    # Legacy Analysis Sections (now wrappers or deleted)
     # =========================================================
     def _analyze_trader_profile(self, context: str) -> str:
-        """Analyze trader profile with evidence-based classification"""
-        # Extract metrics for prompt enhancement
-        metrics = {}
-        try:
-            # Parse context to extract key metrics (basic extraction)
-            import re
-            metrics['discipline_score'] = re.search(r'Discipline Score: ([\d.]+)', context)
-            metrics['emotional_control'] = re.search(r'Emotional Control: ([\d.]+)', context)
-            metrics['risk_appetite'] = re.search(r'Risk Appetite: ([\d.]+)', context)
-            
-            discipline = float(metrics['discipline_score'].group(1)) if metrics['discipline_score'] else 0
-            emotional = float(metrics['emotional_control'].group(1)) if metrics['emotional_control'] else 0
-            risk_app = float(metrics['risk_appetite'].group(1)) if metrics['risk_appetite'] else 0
-        except:
-            discipline = emotional = risk_app = 0
-        
-        prompt = f"""
-You are analyzing a trader's profile based on comprehensive trading data.
-
-{context}
-
-TASK: Classify this trader's profile with EVIDENCE-BASED reasoning.
-
-CLASSIFICATION CRITERIA:
-- **Scalper**: Avg holding < 30 min, 20+ trades/day
-- **Day Trader**: Avg holding 30min-6hrs, 5-20 trades/day
-- **Swing Trader**: Avg holding 1-5 days, 1-5 trades/day
-- **Position Trader**: Avg holding > 5 days, < 1 trade/day
-
-RISK APPETITE CRITERIA:
-- **Conservative**: Max drawdown < 10%, position size < 5% capital
-- **Moderate**: Max drawdown 10-20%, position size 5-10% capital
-- **Aggressive**: Max drawdown > 20%, position size > 10% capital
-
-OUTPUT FORMAT:
-1. **Primary Classification**: [Type] with [Risk Appetite]
-   - Evidence: [Cite specific metrics from the data]
-   - Confidence: [High/Medium/Low]
-
-2. **Persona Trait Alignment**:
-   - Discipline Score ({discipline:.1f}/100): [How it manifests in trades]
-   - Emotional Control ({emotional:.1f}/100): [Specific examples from patterns]
-   - Risk Appetite ({risk_app:.1f}/100): [Position sizing patterns]
-
-3. **Trading Style Characteristics** (3-5 bullet points with numbers):
-   - Example: "Prefers options trading (78% of trades) over equity (22%)"
-
-4. **Behavioral Signature** (1-2 sentences):
-   - What makes this trader unique based on the data?
-
-CONSTRAINTS:
-- Use simple English for Indian retail traders
-- Cite specific numbers from the data
-- Total length: 250-350 words
-- Be direct and honest
-
-Provide the trader profile:
-"""
-        system_prompt = "You are an expert financial analyst specializing in trading behavior analysis. Provide evidence-based classifications with specific metrics."
-        self.logger.info("1.1 Generate _analyze_trader_profile from LLM")
-        raw = self._call_ollama(prompt, system_prompt)
-        return self._beautify_recommendations_html(raw)
+        return "Legacy Section - Replaced by Master Analysis"
 
     def _analyze_risk(self, context: str) -> str:
-        """Analyze risk profile with quantified assessment"""
-        # Extract metrics for prompt enhancement
-        try:
-            import re
-            sharpe_match = re.search(r'Sharpe Ratio: ([-\d.]+)', context)
-            sortino_match = re.search(r'Sortino Ratio: ([-\d.]+)', context)
-            dd_match = re.search(r'Max Drawdown: ([\d.]+)%', context)
-            
-            sharpe = float(sharpe_match.group(1)) if sharpe_match else 0
-            sortino = float(sortino_match.group(1)) if sortino_match else 0
-            max_dd = float(dd_match.group(1)) if dd_match else 0
-        except:
-            sharpe = sortino = max_dd = 0
-        
-        prompt = f"""
-You are conducting a risk assessment for a trader.
-
-{context}
-
-TASK: Provide a QUANTIFIED risk assessment with actionable insights.
-
-RISK LEVEL CRITERIA:
-- **LOW**: Max DD < 10%, Sharpe > 1.5, Win Rate > 60%, No emotional patterns
-- **MEDIUM**: Max DD 10-20%, Sharpe 0.5-1.5, Win Rate 50-60%, Minor emotional patterns
-- **HIGH**: Max DD 20-35%, Sharpe 0-0.5, Win Rate 40-50%, Moderate emotional patterns
-- **VERY HIGH**: Max DD > 35%, Sharpe < 0, Win Rate < 40%, Severe emotional patterns
-
-OUTPUT FORMAT:
-
-1. **Overall Risk Level**: [LOW/MEDIUM/HIGH/VERY HIGH]
-   - Justification: [Which criteria triggered this level?]
-   - Current Metrics: Sharpe={sharpe:.2f}, Sortino={sortino:.2f}, Max DD={max_dd:.1f}%
-
-2. **Top 3 Risk Factors** (ranked by severity):
-   🔴 **CRITICAL**: [Factor] - [Impact in ₹ or %]
-   🟡 **HIGH**: [Factor] - [Impact in ₹ or %]
-   🟢 **MEDIUM**: [Factor] - [Impact in ₹ or %]
-
-3. **Risk-Adjusted Performance Analysis**:
-   - Sharpe Ratio interpretation: [What does {sharpe:.2f} mean for this trader?]
-   - Sortino Ratio interpretation: [What does {sortino:.2f} mean?]
-   - Max Drawdown impact: [How long to recover from {max_dd:.1f}% loss?]
-
-4. **Persona-Based Vulnerabilities**:
-   - Link emotional control and discipline scores to specific risks
-   - Cite examples from detected patterns
-
-5. **Risk Mitigation Priority**:
-   - **Do First**: [Most urgent action with expected risk reduction]
-   - **Do Next**: [Second priority]
-
-CONSTRAINTS:
-- Use simple English for Indian retail traders
-- Quantify every risk (₹ or %)
-- Total length: 250-350 words
-- Be direct about vulnerabilities
-
-Provide the risk assessment:
-"""
-        system_prompt = "You are a risk management expert analyzing trading portfolios. Focus on quantified risk metrics and actionable mitigation strategies."
-        self.logger.info("1.2 Generate _analyze_risk from LLM")
-        return self._call_ollama(prompt, system_prompt)
+        return "Legacy Section - Replaced by Master Analysis"
 
     def _analyze_behavior(self, context: str) -> str:
-        """Analyze behavioral patterns with quantified impact"""
-        prompt = f"""
-You are analyzing trading behavior patterns.
-
-{context}
-
-TASK: Identify behavioral patterns with FREQUENCY, SEVERITY, and P&L IMPACT.
-
-OUTPUT FORMAT:
-
-1. **Detected Negative Patterns** (for each pattern detected in the data):
-   - **Pattern Name**: [e.g., Revenge Trading]
-   - **Frequency**: [X times out of Y trades = Z%]
-   - **P&L Impact**: [Estimated ₹ lost due to this pattern]
-   - **Severity**: [Low/Medium/High/Critical]
-   - **Example Trade**: [Cite specific date, symbol, loss amount from data]
-   - **Persona Link**: [Which trait score explains this? Cite the score]
-
-2. **Detected Positive Patterns** (if any):
-   - **Pattern Name**: [e.g., Disciplined Exits]
-   - **Frequency**: [X times out of Y trades = Z%]
-   - **P&L Impact**: [Estimated ₹ gained due to this pattern]
-   - **Example Trade**: [Cite specific date, symbol, profit amount]
-
-3. **Contextual Trading Performance** (NEW):
-   - **Market Trend Alignment**: [Are they fighting the Nifty trend or riding it? Cite 'Trend Alignment Score']
-   - **Event/News Efficiency**: [Do they profit from volatility (events/news) or get trapped? Cite Win Rates for Event/News]
-   - **Volume Handling**: [Do they size up correctly on high volume days? Cite High Volume PnL]
-
-4. **Psychological Profile**:
-   - **Primary Tendency**: [Based on most frequent pattern]
-   - **Emotional Triggers**: [What causes bad trades? Cite examples from data]
-   - **Discipline Breakdown Points**: [When does discipline fail? Cite times/situations]
-
-5. **Consistency Analysis**:
-   - Link consistency score to actual trading behavior
-   - Evidence from win/loss streaks in the data
-
-CONSTRAINTS:
-- Every claim must have a number (frequency, amount, percentage)
-- Cite at least 2 specific trade examples with dates
-- Link patterns to persona trait scores
-- Use simple English for Indian retail traders
-- Total length: 300-400 words
-
-Provide the behavioral analysis:
-"""
-        system_prompt = "You are a trading psychology expert analyzing trader behavior. Focus on data-driven insights with specific examples."
-        self.logger.info("1.3 Generate _analyze_behavior from LLM")
-        return self._call_ollama(prompt, system_prompt)
+        return "Legacy Section - Replaced by Master Analysis"
 
     def _analyze_context_performance(self, context: str) -> Dict:
-        # """Analyze contextual performance (Events, News, Trend, Volume, Charts, ATH/ATL) returning STRUCTURED JSON"""
-        #
-        # # --- CRITICAL FIX: STRIP RAW TRADES FROM CONTEXT TO AVOID OVERLOAD ---
-        # short_context = context
-        # if "RAW TRADES DATASET" in context:
-        #     short_context = context.split("RAW TRADES DATASET")[0]
-        #
-        prompt = f"""
-        You are a high-performance trading psychologist analyzing a trader's behavior in specific contexts.
-
-        {context}
-
-        TASK: Interpret the 'Contextual Trading Performance' metrics.
-        
-        CRITICAL INSTRUCTIONS:
-        1. **Do NOT just repeat the numbers** (The user can see the Win Rate/PnL). 
-        2. **Explain the BEHAVIOR**: Why are they winning/losing in this context?
-        3. **Map to PERSONA**: Link the observation to the identified 'Persona Type' and 'Traits'.
-
-        Return a STRICT JSON object with no markdown formatting.
-
-        JSON STRUCTURE:
-        {{
-            "event": {{
-                "verdict": "Psychological/Behavioral Title (2-3 words)",
-                "reasoning": "Insight linking to Persona traits."
-            }},
-            "news": {{
-                "verdict": "Verdict Title",
-                "reasoning": "Insight linking to Persona."
-            }},
-            "volume": {{
-                "verdict": "Verdict Title",
-                "reasoning": "Insight linking to Persona."
-            }},
-            "trend": {{
-                "verdict": "Verdict Title",
-                "reasoning": "Insight linking to Persona."
-            }},
-            "chart_quality": {{
-                "verdict": "Verdict Title (e.g. 'Setup Discipline')",
-                "reasoning": "Analyze performance on Good vs Bad charts. Do they respect technical setups?"
-            }},
-            "ath": {{
-                "verdict": "Verdict Title (e.g. 'Breakout Confidence')",
-                "reasoning": "Analyze behavior at All-Time Highs (fear of heights or momentum capture?)."
-            }},
-            "atl": {{
-                "verdict": "Verdict Title (e.g. 'Value Hunting')",
-                "reasoning": "Analyze behavior at All-Time Lows (catching falling knives or value signs?)."
-            }}
-        }}
-
-        JSON OUTPUT:
-        """
-        system_prompt = "You are a data-driven trading analyst. Output only valid JSON."
-        self.logger.info("1.3.5 Generate _analyze_context_performance schema from LLM")
-        
-        raw_response = self._call_ollama(prompt, system_prompt)
-        
-        # Parse JSON
-        import json
-        import re
-        try:
-            # Clean potential markdown code blocks
-            clean_json = re.sub(r"```json|```", "", raw_response).strip()
-            # Sanitization
-            clean_json = clean_json.replace("‑", "-").replace("“", '"').replace("”", '"')
-            
-            return json.loads(clean_json)
-        except Exception as e:
-            self.logger.error(f"Failed to parse context JSON: {e}")
-            # Fallback structure
-            return {
-                "event": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "news": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "volume": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "trend": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "chart_quality": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "ath": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."},
-                "atl": {"verdict": "Analysis Failed", "reasoning": "Could not generate insight."}
-            }
+        return {}
 
     def _generate_recommendations(self, context: str) -> str:
-        """Generate actionable recommendations with numerical targets"""
-        prompt = f"""
-You are a professional trading coach creating an ACTION PLAN.
-
-{context}
-
-TASK: Provide SPECIFIC, MEASURABLE, ACHIEVABLE recommendations.
-
-CRITICAL RULES:
-1. Every recommendation MUST have a NUMBER (from X to Y)
-2. Every recommendation MUST have a SUCCESS METRIC
-3. Prioritize by IMPACT (which will improve P&L most?)
-4. Personalize based on PERSONA TRAITS
-
-OUTPUT FORMAT:
-
-## 🔴 CRITICAL ACTIONS (Do in Next 1-2 Weeks)
-**Priority 1: [Action Title]**
-- **Current State**: [Metric] = [Current Value]
-- **Target**: [Metric] = [Target Value]
-- **Why**: [Expected P&L impact or risk reduction in ₹ or %]
-- **How**: [Specific steps: 1, 2, 3]
-- **Success Metric**: [How to measure progress]
-- **Persona Link**: [Which trait needs improvement? Current score: X/100]
-
-**Priority 2: [Action Title]**
-[Same format]
-
-## 🟡 IMPORTANT ACTIONS (Do in Next 1-3 Months)
-**Action 1: [Title]**
-- **Current → Target**: [X → Y]
-- **Expected Impact**: [₹ or % improvement]
-- **Steps**: [1, 2, 3]
-
-**Action 2: [Title]**
-[Same format]
-
-## 🟢 LONG-TERM STRATEGY (3-6 Months)
-**Strategic Change 1: [Title]**
-- **Current Approach**: [Description]
-- **Recommended Approach**: [Description]
-- **Why**: [Rationale based on persona analysis]
-
-## 📊 PERSONA DEVELOPMENT PLAN
-Based on persona scores from the data:
-- **Discipline**: [Specific exercise to improve this trait]
-- **Emotional Control**: [Specific exercise to improve this trait]
-- **Patience**: [Specific exercise to improve this trait]
-
-## ✅ QUICK WINS (Easiest to Implement)
-1. [Action with immediate impact - cite expected ₹ benefit]
-2. [Action with immediate impact - cite expected ₹ benefit]
-
-CONSTRAINTS:
-- EVERY recommendation must have "From X to Y" format
-- Prioritize by P&L impact (cite expected ₹ improvement)
-- Use simple English for Indian retail traders
-- Total length: 400-500 words
-- Be brutally honest about what needs to change
-
-Provide the action plan:
-"""
-        system_prompt = "You are a professional trading coach providing improvement strategies. Focus on specific, measurable actions with clear numerical targets."
-        self.logger.info("1.4 Generate _generate_recommendations from LLM")
-        return self._call_ollama(prompt, system_prompt)
+        return "Legacy Section - Replaced by Master Analysis"
 
     def _summarize_performance(self, context: str) -> str:
-        """Summarize overall performance with improvement path"""
-        prompt = f"""
-You are providing an executive performance review.
+        return "Legacy Section - Replaced by Master Analysis"
 
-{context}
-
-TASK: Deliver a DIRECT, HONEST verdict with clear improvement path.
-
-VERDICT CRITERIA:
-- **EXCELLENT**: Sharpe > 1.5, Win Rate > 60%, Max DD < 10%, No critical patterns
-- **GOOD**: Sharpe 1-1.5, Win Rate 55-60%, Max DD 10-15%, Minor patterns
-- **AVERAGE**: Sharpe 0.5-1, Win Rate 50-55%, Max DD 15-25%, Moderate patterns
-- **POOR**: Sharpe 0-0.5, Win Rate 40-50%, Max DD 25-35%, Severe patterns
-- **CRITICAL**: Sharpe < 0, Win Rate < 40%, Max DD > 35%, Critical patterns
-
-OUTPUT FORMAT:
-
-## 📊 OVERALL VERDICT: [EXCELLENT/GOOD/AVERAGE/POOR/CRITICAL]
-
-**Justification**: [Which criteria triggered this verdict? Cite specific metrics]
-
-**Hard Flags Consideration**: [If any hard flags exist in the data, explain how they influenced the verdict]
-
-## ✅ TOP 3 STRENGTHS
-1. **[Strength]**: [Quantified evidence from data]
-2. **[Strength]**: [Quantified evidence from data]
-3. **[Strength]**: [Quantified evidence from data]
-
-## ❌ TOP 3 WEAKNESSES
-1. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
-2. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
-3. **[Weakness]**: [Quantified impact on P&L in ₹ or %]
-
-## 🎯 PATH TO NEXT LEVEL
-**To move from [current verdict] to [next level], you need to:**
-1. [Specific metric improvement: From X to Y]
-2. [Specific metric improvement: From X to Y]
-3. [Specific behavioral change with measurable target]
-
-## 🧠 PERSONA ASSESSMENT
-**Your Trading Personality**: [Based on persona type from data]
-- **Alignment**: [Are your traits helping or hurting performance?]
-- **Key Insight**: [1-2 sentences on persona-performance relationship]
-
-## 💰 BOTTOM LINE
-[2-3 sentences: Direct, honest assessment. Would you invest with this trader? Why or why not?]
-
-CONSTRAINTS:
-- Be brutally honest
-- Use simple English for Indian retail traders
-- Cite specific numbers from the data
-- Total length: 200-300 words
-
-Provide the executive summary:
-"""
-        system_prompt = "You are a senior financial advisor providing performance reviews. Be direct and honest in your assessment."
-        self.logger.info("1.5 Generate _summarize_performance from LLM")
-
-        return self._call_ollama(prompt, system_prompt)
+    # NOTE: _beautify_recommendations_html defined earlier at line 143 with full
+    # HTML beautification logic. Duplicate removed to prevent silent override.
 
     # =========================================================
     # NEW: Structured Summary Extraction
@@ -933,3 +1166,5 @@ Provide the executive summary:
                 summary["performance_verdict"] = ceiling
 
         return summary
+
+    # NOTE: _compute_verdict_ceiling defined earlier at line 100. Duplicate removed.

@@ -27,37 +27,297 @@ class TradingPatternDetector:
         patterns['time_patterns'] = self.detect_time_patterns(df)
         # patterns['instrument_clustering'] = self.detect_instrument_clustering(df)
 
-        # 🧠 NEW advanced detections
+        # 🧠 Behavioral bias detections
         patterns['fomo_trading'] = self.detect_fomo_trading(df)
         patterns['chasing_losses'] = self.detect_chasing_losses(df)
         # patterns['overconfidence'] = self.detect_overconfidence(df)
         patterns['weekend_exposure'] = self.detect_weekend_exposure(df)
+        
+        # 🆕 New pattern detections
+        patterns['anchor_bias'] = self.detect_anchor_bias(df)
+        patterns['loss_averaging'] = self.detect_loss_averaging(df)
+        patterns['intraday_vs_overnight'] = self.detect_intraday_vs_overnight_risk(df)
 
         return patterns
-    # ---------- 🧠 NEW DETECTIONS BELOW ----------
+    # ---------- 🧠 BEHAVIORAL PATTERN DETECTIONS ----------
 
     def detect_fomo_trading(self, df: pd.DataFrame) -> Dict:
         """
-        Detect FOMO (Fear Of Missing Out) trades:
-        Entering immediately after large price moves or missed opportunities.
+        FOMO = Entering after an EXTENDED CONTINUOUS MOVE with speed and no consolidation.
+        
+        Detection logic:
+        1. Detect extended bull/bear runs: >3 consecutive same-direction days OR >5% move in <3 sessions
+        2. Check if there was NO consolidation (no range compression) before entry
+        3. Check if entry was at the TAIL END of the move (price far from moving average)
+        4. Cross-reference with trader's entry timing — late entries into fast moves = FOMO
         """
-        if not {'open', 'close', 'trade_date'}.issubset(df.columns):
+        if not {'open', 'close', 'high', 'low', 'trade_date'}.issubset(df.columns):
             return {'detected': False}
 
-        df = df.sort_values('trade_date')
-        df['price_change'] = ((df['close'] - df['open']) / df['open']) * 100
+        df = df.copy().sort_values('trade_date')
+        fomo_trades = []
+        fomo_examples = []
+        
+        # Group by symbol to analyze per-stock runs
+        for symbol, sym_df in df.groupby('symbol'):
+            sym_df = sym_df.sort_values('trade_date')
+            if len(sym_df) < 2:
+                continue
+            
+            # Calculate daily returns and runs
+            sym_df = sym_df.copy()
+            sym_df['daily_return'] = (sym_df['close'] - sym_df['open']) / (sym_df['open'] + 1e-6)
+            sym_df['is_green'] = sym_df['daily_return'] > 0
+            
+            # Detect extended runs (>= 3 consecutive green/red candles)
+            run_count = 0
+            run_direction = None
+            cum_move = 0.0
+            
+            for idx, (_, row) in enumerate(sym_df.iterrows()):
+                current_dir = 'up' if row['daily_return'] > 0 else 'down'
+                
+                if current_dir == run_direction:
+                    run_count += 1
+                    cum_move += abs(row['daily_return'])
+                else:
+                    run_direction = current_dir
+                    run_count = 1
+                    cum_move = abs(row['daily_return'])
+                
+                # Check for fast extended move
+                is_extended_run = run_count >= 3
+                is_fast_move = cum_move > 0.05  # >5% cumulative move
+                
+                # Check if this row is a BUY entry during a bullish run (or SELL during bearish)
+                is_buy = row['transaction_type'] == 'BUY'
+                is_sell = row['transaction_type'] in ('SALE', 'SELL')
+                
+                if is_extended_run or is_fast_move:
+                    # FOMO = buying into a bullish extended run OR selling into bearish panic
+                    if (is_buy and run_direction == 'up') or (is_sell and run_direction == 'down'):
+                        # Check no consolidation: high-low range is expanding not contracting
+                        recent = sym_df.iloc[max(0, idx-3):idx+1]
+                        if len(recent) >= 2:
+                            ranges = (recent['high'] - recent['low']) / (recent['open'] + 1e-6)
+                            range_expanding = ranges.is_monotonic_increasing or ranges.iloc[-1] > ranges.mean()
+                            
+                            if range_expanding:  # No consolidation = FOMO signal
+                                fomo_trades.append(row.name)
+                                if len(fomo_examples) < 5:
+                                    fomo_examples.append({
+                                        'symbol': symbol,
+                                        'date': str(row['trade_date']),
+                                        'type': row['transaction_type'],
+                                        'price': float(row['price']),
+                                        'consecutive_run': int(run_count),
+                                        'cumulative_move_pct': round(cum_move * 100, 2),
+                                    })
 
-        large_moves = df['price_change'].abs() > 2.5  # big intraday moves
-        fomo_trades = 0
-
-        for i in range(1, len(df)):
-            if large_moves.iloc[i - 1] and df['transaction_type'].iloc[i] == 'BUY':
-                fomo_trades += 1
-
+        fomo_count = len(fomo_trades)
+        total_buys = len(df[df['transaction_type'] == 'BUY'])
+        
         return {
-            'detected': fomo_trades > self.min_trades * 0.2,
-            'fomo_trades': int(fomo_trades),
-            'percentage': float(fomo_trades / len(df) * 100) if len(df) > 0 else 0
+            'detected': fomo_count > max(3, self.min_trades * 0.1),
+            'fomo_trades': fomo_count,
+            'percentage': float(fomo_count / total_buys * 100) if total_buys > 0 else 0,
+            'examples': fomo_examples,
+            'description': 'Entries made during extended, fast-moving runs without consolidation'
+        }
+
+    def detect_anchor_bias(self, df: pd.DataFrame) -> Dict:
+        """
+        Anchor Bias = Trader anchors to a previous price/level and refuses to adapt.
+        
+        Detection:
+        1. Repeated entries at similar prices after the stock has moved >5%
+        2. Round number anchoring — entries/exits clustering at round numbers
+        3. Averaging into a losing position at the same level
+        """
+        df = df.copy().sort_values('trade_date')
+        anchor_events = []
+        anchor_examples = []
+        
+        for symbol, sym_df in df.groupby('symbol'):
+            buys = sym_df[sym_df['transaction_type'] == 'BUY'].sort_values('trade_date')
+            if len(buys) < 2:
+                continue
+            
+            for i in range(1, len(buys)):
+                prev = buys.iloc[i-1]
+                curr = buys.iloc[i]
+                
+                # Check if the market has moved significantly but trader buys at similar price
+                price_diff_pct = abs(curr['price'] - prev['price']) / (prev['price'] + 1e-6) * 100
+                
+                # If price at entry is within 2% of previous entry, but high/low shows >5% move
+                if price_diff_pct < 2.0:
+                    # Check if market moved between these two entries
+                    between = sym_df[(sym_df['trade_date'] > prev['trade_date']) & 
+                                     (sym_df['trade_date'] <= curr['trade_date'])]
+                    if not between.empty and 'high' in between.columns and 'low' in between.columns:
+                        high_move = (between['high'].max() - prev['price']) / (prev['price'] + 1e-6) * 100
+                        low_move = (prev['price'] - between['low'].min()) / (prev['price'] + 1e-6) * 100
+                        
+                        if high_move > 5 or low_move > 5:
+                            anchor_events.append(curr.name)
+                            if len(anchor_examples) < 5:
+                                anchor_examples.append({
+                                    'symbol': symbol,
+                                    'anchored_price': float(prev['price']),
+                                    'new_entry_price': float(curr['price']),
+                                    'market_moved_pct': round(max(high_move, low_move), 2),
+                                    'date': str(curr['trade_date']),
+                                })
+        
+        # Round number anchoring
+        round_entries = 0
+        for _, row in df.iterrows():
+            price = row['price']
+            # Check if price is within 0.5% of a round number (100, 500, 1000, etc.)
+            for base in [50, 100, 500, 1000, 5000]:
+                nearest_round = round(price / base) * base
+                if abs(price - nearest_round) / (price + 1e-6) < 0.005:
+                    round_entries += 1
+                    break
+        
+        round_pct = (round_entries / len(df) * 100) if len(df) > 0 else 0
+        
+        return {
+            'detected': len(anchor_events) > 3 or round_pct > 30,
+            'anchor_events': len(anchor_events),
+            'round_number_pct': round(round_pct, 1),
+            'examples': anchor_examples,
+            'description': 'Repeated entries near the same price despite significant market moves'
+        }
+
+    def detect_loss_averaging(self, df: pd.DataFrame) -> Dict:
+        """
+        Loss Averaging = Buying more of a losing position at declining prices.
+        
+        Detection:
+        1. Same-day: multiple buys at declining prices for the same symbol
+        2. Cross-day: buying same symbol over multiple days at lower prices
+        3. Quantity escalation: each subsequent buy is larger (doubling down)
+        Track outcome: did averaging pay off or compound the loss?
+        """
+        df = df.copy().sort_values('trade_date')
+        averaging_events = []
+        paid_off = 0
+        compounded = 0
+        
+        for symbol, sym_df in df.groupby('symbol'):
+            buys = sym_df[sym_df['transaction_type'] == 'BUY'].sort_values('trade_date')
+            if len(buys) < 2:
+                continue
+            
+            # Look for sequences of declining buy prices
+            i = 0
+            while i < len(buys) - 1:
+                sequence = [buys.iloc[i]]
+                j = i + 1
+                while j < len(buys) and buys.iloc[j]['price'] < buys.iloc[j-1]['price']:
+                    sequence.append(buys.iloc[j])
+                    j += 1
+                
+                if len(sequence) >= 2:
+                    # Check for quantity escalation (doubling down signal)
+                    qty_escalation = sequence[-1]['quantity'] > sequence[0]['quantity']
+                    
+                    # Check outcome: was there a sell after averaging?
+                    last_avg_date = sequence[-1]['trade_date']
+                    sells_after = sym_df[(sym_df['transaction_type'].isin(['SALE', 'SELL'])) & 
+                                        (sym_df['trade_date'] > last_avg_date)]
+                    
+                    avg_buy_price = sum(s['price'] * s['quantity'] for s in sequence) / sum(s['quantity'] for s in sequence)
+                    
+                    if not sells_after.empty:
+                        exit_price = sells_after.iloc[0]['price']
+                        outcome = 'paid_off' if exit_price > avg_buy_price else 'compounded_loss'
+                        if outcome == 'paid_off':
+                            paid_off += 1
+                        else:
+                            compounded += 1
+                    else:
+                        outcome = 'still_open'
+                    
+                    total_capital = sum(s['price'] * s['quantity'] for s in sequence)
+                    
+                    averaging_events.append({
+                        'symbol': symbol,
+                        'num_buys': len(sequence),
+                        'price_decline_pct': round((1 - sequence[-1]['price'] / sequence[0]['price']) * 100, 2),
+                        'qty_escalation': qty_escalation,
+                        'total_capital_at_risk': round(total_capital, 2),
+                        'outcome': outcome,
+                        'avg_buy_price': round(avg_buy_price, 2),
+                    })
+                
+                i = j
+        
+        return {
+            'detected': len(averaging_events) > 2,
+            'events_count': len(averaging_events),
+            'paid_off_count': paid_off,
+            'compounded_count': compounded,
+            'events': averaging_events[:10],  # Top 10 for report
+            'description': 'Buying more of a losing position at declining prices',
+            'success_rate': round(paid_off / (paid_off + compounded) * 100, 1) if (paid_off + compounded) > 0 else 0,
+        }
+
+    def detect_intraday_vs_overnight_risk(self, df: pd.DataFrame) -> Dict:
+        """
+        Classify trades as INTRADAY vs OVERNIGHT and compute separate metrics for each.
+        Detects overnight gap risk.
+        """
+        if 'holding_period' not in df.columns:
+            return {'detected': False}
+        
+        df = df.copy()
+        
+        # Intraday = opened and closed same calendar day (or holding < 390 min = 6.5 hrs)
+        # We use holding_period as a proxy
+        INTRADAY_THRESHOLD = 390  # ~6.5 hours = one trading session
+        
+        traded = df[df['pnl'] != 0].copy()
+        if traded.empty:
+            return {'detected': False}
+        
+        traded['trade_type'] = traded['holding_period'].apply(
+            lambda x: 'INTRADAY' if 0 < x <= INTRADAY_THRESHOLD else ('OVERNIGHT' if x > INTRADAY_THRESHOLD else 'UNKNOWN')
+        )
+        
+        intraday = traded[traded['trade_type'] == 'INTRADAY']
+        overnight = traded[traded['trade_type'] == 'OVERNIGHT']
+        
+        def compute_stats(subset, label):
+            if subset.empty:
+                return {'count': 0, 'win_rate': 0, 'avg_pnl': 0, 'max_loss': 0, 'total_pnl': 0}
+            wins = len(subset[subset['pnl'] > 0])
+            return {
+                'count': len(subset),
+                'win_rate': round(wins / len(subset) * 100, 1),
+                'avg_pnl': round(float(subset['pnl'].mean()), 2),
+                'max_loss': round(float(subset['pnl'].min()), 2),
+                'total_pnl': round(float(subset['pnl'].sum()), 2),
+                'avg_holding_minutes': round(float(subset['holding_period'].mean()), 1),
+            }
+        
+        intraday_stats = compute_stats(intraday, 'INTRADAY')
+        overnight_stats = compute_stats(overnight, 'OVERNIGHT')
+        
+        # Detect overnight gap risk: trades that have larger losses overnight
+        overnight_risk_higher = (
+            overnight_stats.get('max_loss', 0) < intraday_stats.get('max_loss', 0) * 1.5
+            if intraday_stats.get('max_loss', 0) < 0 else False
+        )
+        
+        return {
+            'detected': True,
+            'intraday': intraday_stats,
+            'overnight': overnight_stats,
+            'overnight_risk_higher': overnight_risk_higher,
+            'intraday_pct': round(len(intraday) / len(traded) * 100, 1) if len(traded) > 0 else 0,
         }
 
     def detect_chasing_losses(self, df: pd.DataFrame) -> Dict:
@@ -108,7 +368,7 @@ class TradingPatternDetector:
         Detect trades or positions held over the weekend (Friday → Monday).
         High-risk exposure pattern.
         """
-        df = df.sort_values('trade_date')
+        df = df.copy().sort_values('trade_date')
         weekend_holds = 0
 
         df['trade_day'] = df['trade_date'].dt.day_name()
@@ -194,9 +454,9 @@ class TradingPatternDetector:
     def detect_scalping(self, df: pd.DataFrame) -> Dict:
         """Detect scalping behavior"""
         # Scalping = very short holding periods
-        avg_holding = df['holding_period_minutes'].mean()
+        avg_holding = df['holding_period'].mean()
         
-        scalping_trades = len(df[df['holding_period_minutes'] < 30])
+        scalping_trades = len(df[df['holding_period'] < 30])
         
         return {
             'detected': avg_holding < 60,  # Average holding < 1 hour

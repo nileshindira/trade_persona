@@ -9,7 +9,7 @@ sys.path.append(os.getcwd())
 
 from src.data_processor import TradingDataProcessor
 from src.metrics_calculator import TradingMetricsCalculator
-from src.llm_analyzer import OllamaAnalyzer
+from src.llm_analyzer import LLMAnalyzer
 from src.pattern_detector import TradingPatternDetector
 
 # Mock config
@@ -42,7 +42,7 @@ class DummyLogger:
     def error(self, msg): print(f"DEBUG LOG ERROR: {msg}")
     def warning(self, msg): pass
 
-class ContextAuditAnalyzer(OllamaAnalyzer):
+class ContextAuditAnalyzer(LLMAnalyzer):
     """Subclass to intercept prompts without calling Ollama"""
     
     def __init__(self, output_file="LLM_CONTEXT_AUDIT.md"):

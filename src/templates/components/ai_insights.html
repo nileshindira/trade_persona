@@ -1,25 +1,25 @@
-          <!-- ===== AI INSIGHTS ===== -->
-          {% if report.analysis_text %}
-          <section id="ai_insights" class="page-section mt-4">
-            <h4 class="section-title"><i class="bi bi-robot"></i> AI-Generated Insights</h4>
-            <div class="accordion" id="aiAcc">
-              {% for k,v in report.analysis_text.items() %}
-              <div class="accordion-item mb-3 border-0">
-                <h2 class="accordion-header">
-                  <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold"
-                          data-bs-toggle="collapse" data-bs-target="#ai{{ loop.index }}"
-                          style="background:linear-gradient(135deg,rgba(13,110,253,.08),rgba(16,185,129,.08))">
-                    <i class="bi bi-lightbulb me-2"></i>
-                    {{ k.replace('_',' ').title() }}
-                  </button>
-                </h2>
-                <div id="ai{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
-                  <div class="accordion-body p-4 ai-insight-text">
-                    {{ v|safe }}
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </section>
-          {% endif %}
+<!-- ===== AI INSIGHTS ===== -->
+{% if report.analysis_text %}
+<section id="ai_insights" class="page-section mt-4">
+  <h4 class="section-title"><i class="bi bi-robot"></i> AI-Generated Insights</h4>
+  <div class="accordion" id="aiAcc">
+    {% for k,v in report.analysis_text.items() %}
+    <div class="accordion-item mb-3 border-0">
+      <h2 class="accordion-header">
+        <button class="accordion-button {% if not loop.first %}collapsed{% endif %} fw-bold" data-bs-toggle="collapse"
+          data-bs-target="#ai{{ loop.index }}"
+          style="background:linear-gradient(135deg,rgba(121,82,245,.08),rgba(16,185,129,.08))">
+          <i class="bi bi-lightbulb me-2"></i>
+          {{ k.replace('_',' ').title() }}
+        </button>
+      </h2>
+      <div id="ai{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}">
+        <div class="accordion-body p-4 ai-insight-text">
+          {{ v|safe }}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

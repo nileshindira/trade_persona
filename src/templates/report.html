@@ -1,776 +1,819 @@
 {% extends "base.html" %}
-
 {% block content %}
 
-<!-- Custom Styles for Improved Report UI/UX -->
-<style>
-  /* Global Resets */
-  :root {
-    --primary-color: #4f46e5;
-    --secondary-color: #6366f1;
-    --bg-light: #f3f4f6;
-    --bg-white: #ffffff;
-    --text-primary: #1f2937;
-    --text-secondary: #6b7280;
-    --border-color: #e5e7eb;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
-  }
+<div id="hero" class="ag-hero fade-in-up">
+  <div class="ag-hero-eyebrow d-flex justify-content-between align-items-center">
+    <span>Surgical Performance Audit &mdash; Stockk Diagnostic Engine</span>
+    {% if report.appendix.metrics.pnl_reconciliation %}
+    <span
+      class="badge rounded-pill {{ 'bg-success' if report.appendix.metrics.pnl_reconciliation.is_aligned else 'bg-warning' }} text-white"
+      style="font-size:0.65rem; padding: 0.35rem 0.8rem;"
+      title="PnL Reconciliation: FIFO vs MTM alignment is {{ report.appendix.metrics.pnl_reconciliation.gap_pct }}%">
+      <i
+        class="bi {{ 'bi-check-circle' if report.appendix.metrics.pnl_reconciliation.is_aligned else 'bi-exclamation-triangle' }} me-1"></i>
+      Data Confidence: {{ 'High' if report.appendix.metrics.pnl_reconciliation.is_aligned else 'Review Required' }}
+    </span>
+    {% endif %}
+  </div>
+  <h1 class="ag-hero-name">{{ report.hero.trader_name }}</h1>
+  <div class="ag-hero-persona">
+    {{ report.archetype.icon | default("🧠") }}
+    {{ report.hero.persona_name }}
+  </div>
+  <p class="ag-hero-headline">&ldquo;{{ report.hero.headline }}&rdquo;</p>
+  <div class="ag-topline">
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Net Realized P&L</span>
+      <div
+        class="ag-topline-value {{ 'text-ag-success' if (report.hero.topline.net_pnl or 0) > 0 else 'text-ag-danger' }}">
+        &#8377;{{ '{:,.0f}'.format(report.hero.topline.net_pnl | float) }}
+      </div>
+    </div>
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Win Rate</span>
+      <div class="ag-topline-value text-white">{{ '%.1f' | format(report.hero.topline.win_rate | float) }}%</div>
+    </div>
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Profit Factor</span>
+      <div class="ag-topline-value text-white">{{ '%.2f' | format(report.hero.topline.profit_factor | float) }}</div>
+    </div>
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Max Drawdown</span>
+      <div class="ag-topline-value text-ag-danger">{{ '%.1f' | format(report.hero.topline.max_drawdown_pct | float |
+        abs) }}%</div>
+    </div>
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Behavioral Consistency</span>
+      <div class="ag-topline-value text-white">{{ report.consistency_score }}<span style="font-size:0.9rem;">/100</span>
+      </div>
+    </div>
+    <div class="ag-topline-item">
+      <span class="ag-topline-label">Emotional Leakage</span>
+      <div
+        class="ag-topline-value {{ 'text-ag-danger' if (report.emotional_leakage or 0) > 50 else 'text-ag-warning' }}">
+        {{ report.emotional_leakage }}<span style="font-size:0.9rem;">/100</span>
+      </div>
+    </div>
+  </div>
+</div>
 
-  body {
-    background-color: var(--bg-light);
-    color: var(--text-primary);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-weight: 600;
-    color: #111827;
-  }
-
-  /* --- Navbar & Smooth Scroll --- */
-  .section-nav {
-    position: sticky;
-    top: 10px;
-    z-index: 1020;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    padding: 0.75rem 1rem;
-    margin-bottom: 2rem;
-    border: 1px solid var(--border-color);
-  }
-
-  .nav-pills .nav-link {
-    color: var(--text-secondary);
-    font-weight: 500;
-    border-radius: var(--radius-md);
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-  }
-
-  .nav-pills .nav-link:hover {
-    background-color: #eff6ff;
-    color: var(--primary-color);
-  }
-
-  .nav-pills .nav-link.active-section {
-    background-color: var(--primary-color);
-    color: white;
-    box-shadow: var(--shadow-sm);
-  }
-
-  /* --- Page Sections --- */
-  .page-section {
-    background: var(--bg-white);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    margin-bottom: 2rem;
-    padding: 2rem;
-    border: 1px solid var(--border-color);
-    scroll-margin-top: 100px;
-    /* Offset for sticky nav */
-  }
-
-  .section-title {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid #f3f4f6;
-    padding-bottom: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  /* --- Metric Cards (Modernized) --- */
-  .metric-card {
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-
-  .metric-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
-
-  .metric-label {
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-  }
-
-  .metric-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  /* --- Tabs --- */
-  .nav-tabs .nav-link {
-    border: none;
-    color: var(--text-secondary);
-    font-weight: 500;
-  }
-
-  .nav-tabs .nav-link.active {
-    border-bottom: 2px solid var(--primary-color);
-    color: var(--primary-color);
-    background: transparent;
-  }
-
-  /* --- AI Insights Box --- */
-  .response-box {
-    background-color: #f8fafc;
-    border-left: 4px solid var(--primary-color);
-  }
-</style>
-
-<!-- HEADER SECTION -->
-{% include "components/header.html" %}
-
-<!-- STICKY NAVIGATION -->
-<nav class="section-nav">
-  <ul class="nav nav-pills d-flex justify-content-center gap-2">
-    <li class="nav-item">
-      <a class="nav-link active-section" href="#overview" data-target="overview">
-        <i class="bi bi-speedometer2"></i> Overview
-      </a>
+<nav class="ag-sticky-nav fade-in-up">
+  <ul class="nav nav-pills d-flex justify-content-center gap-1 flex-wrap">
+    <li class="nav-item"><a class="nav-link active-section" href="#diagnosis" data-target="diagnosis">🧠 Diagnosis</a>
     </li>
-
-    <li class="nav-item"><a class="nav-link" data-target="metrics" href="#metrics"><i
-          class="bi bi-clipboard-data me-1"></i> Metrics</a></li>
-
-    <li class="nav-item"><a class="nav-link" data-target="charts" href="#charts"><i
-          class="bi bi-graph-up-arrow me-1"></i> Charts</a></li>
-
-    <li class="nav-item"><a class="nav-link" data-target="persona_scores" href="#persona_scores"><i
-          class="bi bi-person-badge me-1"></i> Persona</a></li>
-
-    <li class="nav-item"><a class="nav-link" data-target="positions" href="#positions"><i
-          class="bi bi-box-seam me-1"></i> Positions</a></li>
-
-    <li class="nav-item"><a class="nav-link" data-target="buckets" href="#buckets"><i
-          class="bi bi-grid-3x3-gap me-1"></i> Patterns & Buckets</a></li>
-
-    <li class="nav-item">
-      <a class="nav-link" href="#performance" data-target="performance">
-        <i class="bi bi-clipboard-data"></i> Performance
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#analysis" data-target="analysis">
-        <i class="bi bi-search"></i> Deep Analysis
-      </a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#insights" data-target="insights">
-        <i class="bi bi-robot"></i> AI Verdict
-      </a>
-    </li>
+    <li class="nav-item"><a class="nav-link" href="#strengths" data-target="strengths">✅ Strengths</a></li>
+    <li class="nav-item"><a class="nav-link" href="#mistakes" data-target="mistakes">🩸 Losses</a></li>
+    <li class="nav-item"><a class="nav-link" href="#roadmap" data-target="roadmap">🗺️ Roadmap</a></li>
+    <li class="nav-item"><a class="nav-link" href="#evidence" data-target="evidence">📋 Evidence</a></li>
+    <li class="nav-item"><a class="nav-link" href="#appendix" data-target="appendix">📊 Appendix</a></li>
   </ul>
 </nav>
 
 <main>
 
-  <!-- SECTION 1: OVERVIEW & HEALTH -->
-  <section id="overview" class="page-section">
+  <!-- ── DIAGNOSIS ──────────────────────────────────────────── -->
+  <section id="diagnosis" class="ag-section fade-in-up">
 
-    {% include "components/executive_summary.html" %}
-
-    <div class="mt-4" id="persona_scores">
-      <h5 class="mb-3 text-secondary">Persona & Risk Profile</h5>
-      <div class="row g-4">
-        <!-- Persona Chart -->
-        <div class="col-md-5">
-          <div class="card h-100 border-0 shadow-none bg-light pt-3">
-            <canvas id="personaRadarChart" style="max-height: 300px;"></canvas>
-
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Trait</th>
-                  <th>Score</th>
-                  <th>Visual</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for trait, score in report.web_data.persona_scores.items() %}
-                <tr>
-                  <td><strong>{{ trait.replace('_', ' ').title() }}</strong></td>
-                  <td>{{ '%.2f'|format(score * 100) }}%</td>
-                  <td>
-                    <div class="progress" style="height:20px">
-                      <div class="progress-bar"
-                        style="width:{{ score * 100 }}%;background:linear-gradient(90deg,var(--primary),var(--accent))">
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-
-        <!-- Key Strengths/Weaknesses from AI -->
-        <div class="col-md-7">
-          <div class="mt-3">
-            <h6 class="text-secondary fw-bold small">TRADER TYPE CLASSIFICATION</h6>
-            <div class="p-3 bg-white border rounded">
-              {{ report.analysis_text.trader_profile | safe }}
-            </div>
-          </div>
-        </div>
-  </section>
-
-
-  <!-- ========== METRICS ========== -->
-  <div class="collapsible-header" data-target="metrics_block">
-    <span>📈 Metrics Dashboard</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
-  <div id="metrics_block" class="collapsible-content">
-    <section id="metrics" class="page-section">
-      {% include "components/comprehensive_metrice_dhashboard.html" %}
-    </section>
-  </div>
-
-  <!-- ========== CHARTS ========== -->
-  <div class="collapsible-header" data-target="charts_block">
-    <span>📉 Charts</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
-  <div id="charts_block" class="collapsible-content">
-    <section id="charts" class="page-section">
-      {% include "components/charts.html" %}
-
-      <!-- Market Behaviour & Industry Charts -->
-      <div class="row g-4 mb-4">
-        <div class="col-md-6">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header bg-transparent border-0">
-              <h6 class="text-secondary fw-bold mb-0">MARKET BEHAVIOUR</h6>
-            </div>
-            <div class="card-body">
-              <canvas id="marketBehaviourChart" style="max-height: 300px;"></canvas>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header bg-transparent border-0">
-              <h6 class="text-secondary fw-bold mb-0">INDUSTRY / SECTOR SPLIT</h6>
-            </div>
-            <div class="card-body">
-              <canvas id="industryChart" style="max-height: 300px;"></canvas>
-            </div>
-          </div>
-        </div>
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+        style="width:52px;height:52px;font-size:1.4rem;flex-shrink:0;">🧬</div>
+      <div>
+        <div class="ag-section-eyebrow">Trader Identity</div>
+        <h2 class="ag-section-title mb-0">Who Is This Trader?</h2>
       </div>
-
-      {% include "components/time_based_performance_chart.html" %}
-
-    </section>
-  </div>
-
-  <!-- ========== POSITIONS ========== -->
-  <div class="collapsible-header" data-target="positions_block">
-    <span>📦 Positions</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
-  <div id="positions_block" class="collapsible-content">
-    <section id="positions" class="page-section">
-      {% include "components/positions_table.html" %}
-      {% include "components/gainers_n_losers.html" %}
-    </section>
-  </div>
-
-  <!-- ========== PATTERNS + BUCKETS ========== -->
-  <div class="collapsible-header" data-target="buckets_block">
-    <span>🧩 Patterns & Buckets</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
-  <div id="buckets_block" class="collapsible-content">
-    <section id="buckets" class="page-section">
-
-      {% include "components/buckets.html" %}
-      {% include "components/trade_quality_distribution.html" %}
-      {% include "components/holdingh_period_analysis.html" %}
-    </section>
-  </div>
-
-
-  <!-- SECTION 2: PERFORMANCE METRICS -->
-  <section id="performance" class="page-section">
-    <h3 class="section-title"><i class="bi bi-graph-up"></i> Performance Analysis</h3>
-
-    <!-- Main Metrics Grid -->
-    {% include "components/comprehensive_metrice_dhashboard.html" %}
-
-    <!-- Contextual Performance (Events, News, Volume) -->
-    <div class="mt-5">
-      <h5 class="mb-3 d-flex align-items-center gap-2">
-        <span class="badge bg-indigo text-white p-2 rounded-circle" style="background:#6366f1"><i
-            class="bi bi-crosshair"></i></span>
-        Contextual Performance
-      </h5>
-      {% include "components/contextual_performance_dashboard.html" %}
+      <div class="ms-auto">
+        <span class="ag-archetype-badge">
+          {{ report.archetype.icon | default("🧠") }}
+          {{ report.archetype.name | default("Unclassified") }}
+          <span class="opacity-50 ms-1 small">({{ report.archetype.family | default("") }})</span>
+        </span>
+      </div>
     </div>
-
-
-  </section>
-
-  <!-- SECTION 3: DEEP ANALYSIS (Risk Management) -->
-  <div class="collapsible-header active" data-target="analysis_block">
-    <span><i class="bi bi-shield-check"></i> Risk Management Deep Dive</span>
-    <i class="bi bi-chevron-down"></i>
-  </div>
-  <div id="analysis_block" class="collapsible-content open">
-    <section id="analysis" class="page-section">
-      <div class="row">
-
-        <div class="col-md-12">
-          <h6 class="fw-bold">Risk Assessment</h6>
-          <div class="p-3 border rounded bg-light">
-            {{ report.analysis_text.risk_assessment | safe }}
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <!-- SECTION 4: AI INSIGHTS & RECOMMENDATIONS -->
-  <section id="insights" class="page-section bg-gradient-light">
-    <h3 class="section-title"><i class="bi bi-stars"></i> AI Verdict & Recommendations</h3>
 
     <div class="row g-4">
-      <div class="col-md-8">
-        <div class="card h-100 border-primary border-opacity-25 shadow-sm">
-          <div class="card-header bg-primary bg-opacity-10 py-3">
-            <h5 class="card-title text-primary mb-0 fw-bold">🚀 Action Plan</h5>
+      <div class="col-lg-7">
+        <div class="ag-card ag-card--primary h-100">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="fw-bold mb-0">Diagnostic Verdict</h5>
+            <span class="ag-tag ag-tag--primary">{{ report.diagnosis.trader_type }}</span>
           </div>
-          <div class="card-body">
-            {{ report.analysis_text.recommendations | safe }}
+          <div class="ag-narrative mb-4">{{ report.diagnosis.narrative | markdown | safe }}</div>
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="ag-chip">
+                <span class="ag-chip-label">Strategy Style</span>
+                <div class="ag-chip-value" style="font-size:0.95rem;">{{ report.diagnosis.inferred_style or "N/A" }}
+                </div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="ag-chip">
+                <span class="ag-chip-label">Natural Edge</span>
+                <div class="ag-chip-value text-ag-success" style="font-size:0.9rem;">{{ report.diagnosis.natural_edge or
+                  "N/A" }}</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="ag-chip">
+                <span class="ag-chip-label">Archetype Confidence</span>
+                <div class="ag-chip-value">{{ '%.0f' | format((report.archetype.confidence or 0) | float * 100) }}%
+                </div>
+                <div class="ag-chip-sub">{{ report.archetype.tagline | default("") }}</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="ag-chip {{ 'ag-chip--danger' if (report.emotional_leakage or 0) > 50 else '' }}">
+                <span class="ag-chip-label">Emotional Leakage Index</span>
+                <div
+                  class="ag-chip-value {{ 'text-ag-danger' if (report.emotional_leakage or 0) > 50 else 'text-ag-warning' }}">
+                  {{ report.emotional_leakage }}<span class="fs-6 fw-400">/100</span>
+                </div>
+                <div class="ag-chip-sub">Higher = more irrational decisions</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="card h-100 border-0 bg-dark text-white shadow">
-          <div class="card-body">
-            <h5 class="fw-bold mb-4">🏆 Final Verdict</h5>
-            <div class="display-1 fw-bold mb-2 text-center text-warning">
-              {{ report.risk_score | default(50) }}<span class="fs-4 text-muted">/100</span>
-            </div>
-            <p class="text-center text-white-50 mb-4">Overall Performance Score</p>
-
-            <hr class="border-secondary">
-
-            <div class="d-grid gap-2">
-              <div class="d-flex justify-content-between">
-                <span>Consistency</span>
-                <span class="text-info">{{ report.persona_scores.consistency | float * 100 | round }}%</span>
-              </div>
-              <div class="d-flex justify-content-between">
-                <span>Discipline</span>
-                <span class="text-warning">{{ report.persona_scores.discipline_score | float * 100 | round }}%</span>
-              </div>
-              <div class="d-flex justify-content-between">
-                <span>Emotional Control</span>
-                <span class="text-success">{{ report.persona_scores.emotional_control | float * 100 | round }}%</span>
+      <div class="col-lg-5">
+        <div class="ag-card ag-card--dark h-100">
+          <h5 class="fw-bold mb-4 text-ag-primary"><i class="bi bi-activity me-2"></i>Behavioral Signature</h5>
+          <div class="row g-3 mb-4">
+            <div class="col-12">
+              <div class="ag-chip ag-chip--dark">
+                <span class="ag-chip-label">Risk Appetite</span>
+                <div class="ag-chip-value" style="font-size:0.82rem;font-weight:600;">
+                  {{ (report.diagnosis.risk_profile.appetite or "N/A") | truncate(120, true, "…") }}
+                </div>
               </div>
             </div>
+            <div class="col-12">
+              <div class="ag-chip ag-chip--dark">
+                <span class="ag-chip-label">Risk Handling</span>
+                <div class="ag-chip-value" style="font-size:0.82rem;font-weight:600;">
+                  {{ (report.diagnosis.risk_profile.handling or "N/A") | truncate(120, true, "…") }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="ag-radar-wrap" style="height:220px;">
+            <canvas id="personaRadarChart"></canvas>
           </div>
         </div>
       </div>
     </div>
+
+    {% if report.trade_dna %}
+    <div class="ag-card mt-4">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:1.3rem;">🧬</span>
+        <h5 class="fw-bold mb-0">Trade DNA Fingerprint</h5>
+        <span class="ag-tag ag-tag--muted ms-auto">Behavioral Profile</span>
+      </div>
+      <div class="row g-3">
+        {% for key, val in report.trade_dna.items() %}
+        {% if key != "avg_hold_minutes" %}
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="ag-chip text-center">
+            <span class="ag-chip-label">{{ key.replace("_", " ").title() }}</span>
+            <div class="ag-chip-value" style="font-size:0.85rem;">{{ val }}</div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="ag-chip text-center">
+            <span class="ag-chip-label">Avg Hold Time</span>
+            <div class="ag-chip-value" style="font-size:0.85rem;">{{ report.trade_dna.avg_hold_minutes | default(0) }}
+              min</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
   </section>
 
-  {% include "components/footer.html" %}
+  <!-- ── STRENGTHS ──────────────────────────────────────────── -->
+  <section id="strengths" class="ag-section fade-in-up">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <h2 class="ag-section-title mb-0">Where You Are Good</h2>
+      <span class="ag-tag ag-tag--success">Edge Verification</span>
+    </div>
+    <div class="row g-4">
+      {% for strength in report.strengths %}
+      <div class="col-md-4">
+        <div class="ag-strength-card ag-card-hover">
+          <h5 class="fw-bold text-ag-success mb-2">{{ strength.title }}</h5>
+          <div class="text-ag-muted small mb-3">{{ strength.why_it_works | default(strength.evidence | default("")) |
+            markdown | safe }}</div>
+          {% if strength.sectors %}
+          <div class="mb-2">
+            <span class="ag-chip-label">Best sectors</span>
+            <span class="small">{{ strength.sectors }}</span>
+          </div>
+          {% endif %}
+          <div class="ag-evidence-box">
+            <i class="bi bi-shield-check text-ag-success me-1"></i>
+            <strong>Evidence:</strong> {{ strength.evidence | default("") | markdown | safe }}
+          </div>
+          <div class="ag-leverage-box mt-2">
+            <span class="fw-bold text-ag-success d-block mb-1 small">To Leverage Further:</span>
+            <span class="small">{{ strength.to_leverage | default("Reinforce this pattern systematically.") | markdown |
+              safe }}</span>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12 text-center text-ag-muted py-5">
+        <i class="bi bi-hourglass-split fs-2 d-block mb-2"></i>
+        Strength analysis pending LLM output.
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ── LOSSES / MISTAKES ─────────────────────────────────── -->
+  <section id="mistakes" class="ag-section fade-in-up">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <h2 class="ag-section-title mb-0">Where You Are Losing Money</h2>
+      <span class="ag-tag ag-tag--danger">Leakage Diagnostic</span>
+    </div>
+    <div class="row g-4 mb-5">
+      {% for mistake in report.mistakes %}
+      <div class="col-md-4">
+        <div class="ag-mistake-card ag-card-hover">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="fw-bold text-ag-danger mb-0">{{ mistake.title }}</h5>
+            {% if mistake.impact %}
+            <span class="ag-tag ag-tag--danger">{{ mistake.impact }}</span>
+            {% endif %}
+          </div>
+          <div class="small text-dark mb-3">{{ mistake.pattern | default("") | markdown | safe }}</div>
+          <div class="ag-evidence-box">
+            <i class="bi bi-lightning-charge me-1 text-ag-danger"></i>
+            <strong>Evidence:</strong> {{ mistake.evidence | default("") | markdown | safe }}
+          </div>
+          <div class="ag-fix-box mt-2">
+            <span class="fw-bold text-ag-danger d-block mb-1 small">Surgical Fix:</span>
+            <span class="small">{{ mistake.correction | default("") | markdown | safe }}</span>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12 text-center text-ag-muted py-4">No mistakes identified yet.</div>
+      {% endfor %}
+    </div>
+
+    <div class="ag-card" style="border-top: 4px solid var(--ag-danger);">
+      <h4 class="fw-bold mb-4 text-center font-heading">Cognitive Biases Under Pressure</h4>
+      <div class="row g-3">
+        {% for p in report.pressure_patterns %}
+        <div class="col-md-4">
+          <div class="ag-bias-pill">
+            <div class="ag-bias-icon">
+              {% if p.impact == "High" %}🔴{% elif p.impact == "Medium" %}🟡{% else %}🟢{% endif %}
+            </div>
+            <div>
+              <div class="fw-bold text-dark mb-1">{{ p.pattern }}</div>
+              <p class="small text-ag-muted mb-1">{{ p.signature }}</p>
+              <span class="ag-tag ag-tag--{{ 'danger' if p.impact == 'High' else 'warning' }}">{{ p.impact }}
+                Impact</span>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        {% if report.pressure_map %}
+        <div class="col-12">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="ag-bias-pill">
+                <div class="ag-bias-icon">📊</div>
+                <div>
+                  <div class="fw-bold mb-1">Revenge Trade Index</div>
+                  <p class="small text-ag-muted mb-0">Avg PnL on trade after loss:
+                    <strong
+                      class="{{ 'text-ag-danger' if (report.pressure_map.revenge_trade_index or 0) < 0 else 'text-ag-success' }}">
+                      &#8377;{{ '{:,.0f}'.format(report.pressure_map.revenge_trade_index | float) }}
+                    </strong>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="ag-bias-pill">
+                <div class="ag-bias-icon">📈</div>
+                <div>
+                  <div class="fw-bold mb-1">Hot-Hand Bias</div>
+                  <p class="small text-ag-muted mb-0">Avg PnL after a win:
+                    <strong class="text-ag-success">&#8377;{{
+                      '{:,.0f}'.format(report.pressure_map.hot_hand_avg_pnl_after_win | float) }}</strong>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="ag-bias-pill">
+                <div class="ag-bias-icon">⏳</div>
+                <div>
+                  <div class="fw-bold mb-1">Loss-Hope Holding</div>
+                  <p class="small text-ag-muted mb-0">Holds losing trades
+                    <strong>{{ report.pressure_map.loss_aversion_ratio }}x</strong> longer than winners
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center text-ag-muted py-3">No behavioral pressure data available.</div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="mb-5">{% include "components/transformation_simulator.html" %}</div>
+
+  <!-- ── ROADMAP ────────────────────────────────────────────── -->
+  <section id="roadmap" class="ag-section fade-in-up">
+    <div class="text-center mb-5">
+      <h2 class="ag-section-title">Improvement Roadmap</h2>
+      <p class="text-ag-muted">A prioritized sequence of actions to transform your performance.</p>
+    </div>
+    <div class="row g-4 mb-5">
+      <div class="col-lg-4">
+        <div class="ag-plan-card-primary">
+          <h4 class="fw-bold mb-4"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Next 5 Sessions</h4>
+          <ul class="list-unstyled mb-0">
+            {% for item in report.improvement_plan.next_5_sessions %}
+            <li class="ag-plan-item">
+              <div class="ag-plan-icon"><i class="bi bi-check2 fw-bold"></i></div>
+              <div>{{ item | markdown | safe }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="ag-plan-card-neutral">
+          <h4 class="fw-bold mb-4 text-ag-primary"><i class="bi bi-calendar-range me-2"></i>Next 30 Days</h4>
+          <ul class="list-unstyled mb-0">
+            {% for item in report.improvement_plan.next_30_days %}
+            <li class="ag-plan-item">
+              <div class="ag-plan-icon"><i class="bi bi-clock-history fw-bold"></i></div>
+              <div class="text-dark">{{ item | markdown | safe }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="ag-plan-card-dark">
+          <div class="ag-chip-label text-warning opacity-80 mb-2">The One Move That Changes Everything</div>
+          <div class="h3 fw-800 text-warning mb-4">{{ report.improvement_plan.biggest_lever | markdown | safe }}</div>
+          <div class="p-3 rounded-3 border border-white border-opacity-10 bg-white bg-opacity-5 text-start my-3">
+            <div class="ag-chip-label opacity-40">Surgical Verdict</div>
+            <div class="h5 fw-bold text-ag-success mb-0">{{ report.final_verdict | markdown | safe }}</div>
+          </div>
+          <div class="mt-auto opacity-50 small font-heading">Powered by Stockk Diagnostic Engine</div>
+        </div>
+      </div>
+    </div>
+
+    {% if report.transformation %}
+    <div class="p-5 rounded-5 shadow-lg position-relative overflow-hidden"
+      style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:white;">
+      <div class="text-center mb-4">
+        <h4 class="fw-bold font-heading mb-1">Behavioral Transformation Forecast</h4>
+        <p class="opacity-50 small">Projected impact of implementing the Roadmap</p>
+      </div>
+      <div class="row g-4">
+        {% for sim in report.transformation %}
+        <div class="col-md-4">
+          <div class="ag-uplift-card">
+            <div class="smallest uppercase-tracking text-ag-primary mb-2">Change Pattern</div>
+            <h6 class="fw-bold mb-3">{{ sim.adjustment | default(sim.change | default("")) }}</h6>
+            <div class="badge bg-success w-100 py-2 mb-3 text-wrap">{{ sim.projected_benefit |
+              default(sim.expected_metric_impact | default("")) | markdown | safe }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- ── EVIDENCE LEDGER ───────────────────────────────────── -->
+  <section id="evidence" class="ag-section fade-in-up">
+    <div class="ag-card">
+      <div class="d-flex align-items-center gap-3 mb-4">
+        <h4 class="fw-bold mb-0">Supporting Evidence Ledger</h4>
+        <span class="ag-tag ag-tag--info ms-auto">{{ report.evidence_ledger | length }} claims</span>
+      </div>
+      <div class="table-responsive">
+        <table class="ag-evidence-table">
+          <thead>
+            <tr>
+              <th style="width:42%;">Diagnostic Claim</th>
+              <th style="width:14%;">Confidence</th>
+              <th>Supporting Proof</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in report.evidence_ledger %}
+            <tr>
+              <td class="fw-bold text-dark">{{ e.claim }}</td>
+              <td>
+                <div class="progress mb-1" style="height:5px;width:80px;">
+                  <div class="progress-bar bg-primary" role="progressbar"
+                    style="width: {{ (e.confidence | float * 10) | int }}%"></div>
+                </div>
+                <div class="smallest text-ag-muted">{{ e.confidence }}/10</div>
+              </td>
+              <td>
+                {% if e.supporting_metrics %}
+                <div class="mb-1">
+                  {% for m in e.supporting_metrics %}
+                  <span class="badge bg-light text-ag-muted border me-1 mb-1" style="font-size:0.7rem;">{{ m |
+                    truncate(100) }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="text-center text-ag-muted py-4">
+                Evidence will appear after LLM analysis completes.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── APPENDIX ──────────────────────────────────────────── -->
+  <section id="appendix" class="ag-appendix fade-in-up">
+    <div class="ag-collapsible-header" data-target="appendix-content">
+      <h4 class="mb-0 fw-bold text-ag-muted">
+        <i class="bi bi-box me-2"></i> Appendix: Analytical Sub-Systems &amp; Raw Data
+      </h4>
+      <i class="bi bi-chevron-down opacity-50"></i>
+    </div>
+    <div id="appendix-content" class="ag-collapsible-content">
+      <div class="container-fluid px-0">
+        <div class="row g-4 mb-5">
+          <div class="col-lg-8">
+            <div class="ag-card">
+              <h5 class="fw-bold mb-4">Cumulative Performance Path</h5>
+              <div style="height:350px;"><canvas id="pnlTimelineChart"></canvas></div>
+            </div>
+            <div class="ag-card mt-3">
+              <h5 class="fw-bold mb-4">NIFTY Benchmark (Original Scale)</h5>
+              <div style="height:350px;"><canvas id="niftyOriginalChart"></canvas></div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            {% include "components/snapshots_summary.html" %}
+            <div class="mt-3">
+              <div class="ag-card" style="border-left:4px solid var(--ag-danger);">
+                <h6 class="fw-bold text-ag-danger mb-3">Hard Risk Violations</h6>
+                {% if report.hard_flags %}
+                <ul class="list-unstyled mb-0">
+                  {% for flag, val in report.hard_flags.items() %}
+                  <li class="d-flex justify-content-between small mb-2">
+                    <span class="text-ag-muted">{{ flag.replace("_"," ").title() }}</span>
+                    <span class="fw-bold">{{ val }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <p class="small text-ag-muted mb-0">No automated risk flags triggered.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mb-5">{% include "components/comprehensive_metrics_dashboard.html" %}</div>
+        <div class="mb-5">{% include "components/contextual_performance_dashboard.html" %}</div>
+        <div class="row g-4 mb-5">
+          <div class="col-md-6">{% include "components/trade_quality_distribution.html" %}</div>
+          <div class="col-md-6">{% include "components/holding_period_analysis.html" %}</div>
+          <div class="col-12">{% include "components/gainers_n_losers.html" %}</div>
+        </div>
+        <div class="row g-4 mb-5">
+          <div class="col-lg-3">
+            <div class="ag-card">
+              <h6 class="fw-bold mb-4">Market Regime Affinity</h6>
+              <div style="height:220px;"><canvas id="marketBehaviourChart"></canvas></div>
+              <div class="smallest text-center text-ag-muted mt-2">Trade count by regime</div>
+            </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="ag-card">
+              <h6 class="fw-bold mb-4">Sector Concentration</h6>
+              <div style="height:220px;"><canvas id="industryChart"></canvas></div>
+              <div class="smallest text-center text-ag-muted mt-2">Trade count by sector</div>
+            </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="ag-card">
+              <h6 class="fw-bold mb-4">Instrument Distribution</h6>
+              <div style="height:220px;"><canvas id="instrumentChart"></canvas></div>
+              <div class="smallest text-center text-ag-muted mt-2">Value-wise instrument mix</div>
+            </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="ag-card">
+              <h6 class="fw-bold mb-4">Sector Exposure</h6>
+              <div style="height:220px;"><canvas id="sectorSegregationChart"></canvas></div>
+              <div class="smallest text-center text-ag-muted mt-2">Value-wise sector mix</div>
+            </div>
+          </div>
+        </div>
+        <div class="mb-5">
+          {% include "components/sectoral_analysis.html" %}
+        </div>
+        <div class="mb-5">
+          <h5 class="fw-bold mb-4">Detailed Trade Log</h5>
+          {% include "components/positions_table.html" %}
+        </div>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-{# =========================
-SCRIPTS (same as before)
-========================= #}
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<footer class="py-5 text-center text-ag-faint small">
+  <p class="mb-1">&copy; 2026 Stockk Diagnostic Engine &mdash; All analyses are AI-generated.</p>
+  <p class="mb-0">Confidential Trading Analytics. Financial decisions remain the responsibility of the trader.</p>
+</footer>
+
+<script id="report_data" type="application/json">{{ report | tojson | safe }}</script>
+
 <script>
-  const report = {{ report| tojson }};
+  const reportData = JSON.parse(document.getElementById('report_data').textContent);
 
-  // P&L Timeline Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.pnl_timeline %}
-  (function () {
-    const ctx = document.getElementById('pnlTimelineChart');
-    if (ctx) {
-      const data = report.web_data.charts.pnl_timeline;
-      new Chart(ctx, {
+  document.addEventListener('DOMContentLoaded', function () {
+    const chartsData = reportData.appendix ? reportData.appendix.charts : {};
+    const personaScores = reportData.appendix ? reportData.appendix.persona_scores : {};
+
+    if (chartsData.pnl_timeline) {
+      const pnlConfig = {
         type: 'line',
         data: {
-          labels: data.dates || [],
-          datasets: [{
-            label: 'P&L',
-            data: data.values || [],
-            borderColor: '#0d6efd',
-            backgroundColor: 'rgba(13,110,253,0.1)',
-            fill: true,
-            tension: 0.4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              grid: { color: 'rgba(0,0,0,0.05)' }
-            }
-          }
-        }
-      });
-    }
-  })();
-  {% endif %}
-
-  // NIFTY Timeline Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.nifty_pnl_timeline %}
-  (function () {
-    const ctx = document.getElementById('niftyTimelineChart');
-    if (ctx) {
-      const data = report.web_data.charts.nifty_pnl_timeline;
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: data.dates || [],
-          datasets: [{
-            label: 'P&L',
-            data: data.values || [],
-            borderColor: '#0d6efd',
-            backgroundColor: 'rgba(13,110,253,0.1)',
-            fill: true,
-            tension: 0.4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
-          scales: {
-            y: {
-              beginAtZero: false,
-              grid: { color: 'rgba(0,0,0,0.05)' }
-            }
-          }
-        }
-      });
-    }
-  })();
-  {% endif %}
-
-  // Instrument Distribution Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.instrument_distribution %}
-  (function () {
-    const ctx = document.getElementById('instrumentChart');
-    if (ctx) {
-      const data = report.web_data.charts.instrument_distribution;
-      new Chart(ctx, {
-        type: 'pie',
-        data: {
-          labels: data.map(d => d.asset_kind),
-          datasets: [{
-            data: data.map(d => d.value),
-            backgroundColor: ['#0d6efd', '#10b981', '#f59e0b', '#ef4444']
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false
-        }
-      });
-    }
-  })();
-  {% endif %}
-
-  // Segment Distribution Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.segment_distribution %}
-  (function () {
-    const ctx = document.getElementById('segmentChart');
-    const selector = document.getElementById('segmentFilter');
-    if (!ctx || !selector) return;
-
-    const raw = report.web_data.charts.segment_distribution;
-
-    function getFiltered() {
-      let v = selector.value;
-      let sorted = [...raw].sort((a, b) => b.value - a.value);
-      if (v === "all") return sorted;
-      return sorted.slice(0, parseInt(v));
-    }
-
-    let chart;
-    function draw() {
-      let data = getFiltered();
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: "pie",
-        data: {
-          labels: data.map(x => x.asset_name),
-          datasets: [{ data: data.map(x => x.value) }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom' } }
-        }
-      });
-    }
-
-    selector.addEventListener("change", draw);
-    draw();
-  })();
-  {% endif %}
-
-  // Persona Radar Chart
-  {% if report.web_data and report.web_data.persona_scores %}
-  (function () {
-    const ctx = document.getElementById('personaRadarChart');
-    if (ctx) {
-      const scores = report.web_data.persona_scores;
-      new Chart(ctx, {
-        type: 'radar',
-        data: {
-          labels: Object.keys(scores).map(k => k.replace('_', ' ').charAt(0).toUpperCase() + k.replace('_', ' ').slice(1)),
-          datasets: [{
-            label: 'Persona Traits',
-            data: Object.values(scores).map(v => v * 100),
-            borderColor: '#0d6efd',
-            backgroundColor: 'rgba(13,110,253,0.2)',
-            borderWidth: 2,
-            pointRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            r: {
-              beginAtZero: true,
-              max: 100,
-              ticks: { stepSize: 20 }
-            }
-          }
-        }
-      });
-    }
-  })();
-  {% endif %}
-
-  // Chart Behavior (Good/Bad) Pie Chart
-  {% if report.web_data and report.web_data.kpis and report.web_data.kpis.chart_behavior_breakdown %}
-  (function () {
-    const ctx = document.getElementById('chartBehaviorChart');
-    if (ctx) {
-      const breakdown = report.web_data.kpis.chart_behavior_breakdown;
-      new Chart(ctx, {
-        type: 'pie',
-        data: {
-          labels: breakdown.map(x => x.label),
-          datasets: [{
-            data: breakdown.map(x => x.value),
-            backgroundColor: ['#28a745', '#dc3545', '#6c757d'],
-            borderWidth: 0
-          }]
+          labels: chartsData.pnl_timeline.dates,
+          datasets: [
+            {
+              label: 'Trader P&L',
+              data: chartsData.pnl_timeline.values,
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 2.5
+            },
+            ...(chartsData.pnl_timeline.benchmark_values && chartsData.pnl_timeline.benchmark_values.length ? [{
+              label: 'Nifty Growth (Scaled)',
+              data: chartsData.pnl_timeline.benchmark_values,
+              borderColor: '#94a3b8',
+              backgroundColor: 'transparent',
+              fill: false,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 1.5,
+              borderDash: [5, 5]
+            }] : [])
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: {
-              display: true,
-              position: 'bottom'
+              display: (chartsData.pnl_timeline.benchmark_values && chartsData.pnl_timeline.benchmark_values.length > 0),
+              position: 'top',
+              align: 'end',
+              labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } }
+            }
+          },
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { display: false },
+            y: {
+              grid: { color: 'rgba(0,0,0,0.04)' },
+              ticks: { font: { size: 10 } }
             }
           }
         }
+      };
+      new Chart(document.getElementById('pnlTimelineChart'), pnlConfig);
+
+      if (document.getElementById('dashboardPnlChart')) {
+        new Chart(document.getElementById('dashboardPnlChart'), JSON.parse(JSON.stringify(pnlConfig)));
+      }
+
+      if (chartsData.pnl_timeline.benchmark_original_values && chartsData.pnl_timeline.benchmark_original_values.length) {
+        new Chart(document.getElementById('niftyOriginalChart'), {
+          type: 'line',
+          data: {
+            labels: chartsData.pnl_timeline.dates,
+            datasets: [{
+              label: 'NIFTY (Original Index Scale)',
+              data: chartsData.pnl_timeline.benchmark_original_values,
+              borderColor: '#64748b',
+              backgroundColor: 'rgba(100,116,139,0.05)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: 'top', align: 'end' } },
+            scales: { x: { display: false }, y: { grid: { color: 'rgba(0,0,0,0.04)' } } }
+          }
+        });
+      }
+    }
+
+    if (personaScores && Object.keys(personaScores).length) {
+      const consistency = reportData.consistency_score || 0;
+      const emotCtl = 100 - (reportData.emotional_leakage || 0);
+      const extScores = Object.assign({}, personaScores, { consistency: consistency, emotional_control: emotCtl });
+      new Chart(document.getElementById('personaRadarChart'), {
+        type: 'radar',
+        data: {
+          labels: Object.keys(extScores).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+          datasets: [{
+            data: Object.values(extScores).map(v => typeof v === 'number' ? Math.min(100, v <= 1 ? v * 100 : v) : 50),
+            borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.18)',
+            borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#6366f1'
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            r: {
+              beginAtZero: true, max: 100, ticks: { display: false },
+              grid: { color: 'rgba(255,255,255,0.08)' }, angleLines: { color: 'rgba(255,255,255,0.08)' }
+            }
+          },
+          plugins: { legend: { display: false } }
+        }
       });
     }
-  })();
-  {% endif %}
 
-  // Trend Alignment Donut
-  {% if report.web_data and report.web_data.kpis and report.web_data.kpis.trend_alignment_score %}
-  (function () {
-    const ctx = document.getElementById('trendAlignmentChart');
-    if (ctx) {
-      const score = report.web_data.kpis.trend_alignment_score;
-      new Chart(ctx, {
+    if (chartsData.market_behaviour_distribution) {
+      new Chart(document.getElementById('marketBehaviourChart'), {
         type: 'doughnut',
         data: {
-          labels: ['Aligned', 'Unaligned'],
+          labels: chartsData.market_behaviour_distribution.map(d => d.label),
           datasets: [{
-            data: [score, 100 - score],
-            backgroundColor: ['#10b981', '#f3f4f6'],
-            borderWidth: 0
+            data: chartsData.market_behaviour_distribution.map(d => d.value),
+            backgroundColor: ['#10b981', '#ef4444', '#f59e0b', '#6366f1', '#8b5cf6', '#ec4899'], borderWidth: 0
           }]
         },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '80%',
-          plugins: {
-            legend: { display: false },
-            tooltip: { enabled: false }
-          }
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
         }
       });
     }
-  })();
-  {% endif %}
 
-  // Market Behaviour Pie Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.market_behaviour_distribution %}
-  (function () {
-    const ctx = document.getElementById('marketBehaviourChart');
-    if (ctx) {
-      const data = report.web_data.charts.market_behaviour_distribution;
-      new Chart(ctx, {
-        type: 'pie',
+    if (chartsData.industry_distribution) {
+      new Chart(document.getElementById('industryChart'), {
+        type: 'doughnut',
         data: {
-          labels: data.map(d => d.label),
+          labels: chartsData.industry_distribution.map(d => d.label),
           datasets: [{
-            data: data.map(d => d.value),
-            backgroundColor: [
-              '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#fd7e14', '#20c997'
-            ],
-            borderWidth: 1
+            data: chartsData.industry_distribution.map(d => d.value),
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'], borderWidth: 0
           }]
         },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom' }
-          }
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
         }
       });
     }
-  })();
-  {% endif %}
 
-  // Industry Pie Chart
-  {% if report.web_data and report.web_data.charts and report.web_data.charts.industry_distribution %}
-  (function () {
-    const ctx = document.getElementById('industryChart');
-    if (ctx) {
-      const data = report.web_data.charts.industry_distribution;
-
-      new Chart(ctx, {
-        type: 'pie',
+    if (chartsData.instrument_distribution) {
+      new Chart(document.getElementById('instrumentChart'), {
+        type: 'doughnut',
         data: {
-          labels: data.map(d => d.label),
+          labels: chartsData.instrument_distribution.map(d => d.asset_kind),
           datasets: [{
-            data: data.map(d => d.value),
-            backgroundColor: [
-              '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
-              '#858796', '#5a5c69', '#f8f9fc', '#4e73df', '#1cc88a', '#36b9cc'
-            ],
-            borderWidth: 1
+            data: chartsData.instrument_distribution.map(d => d.value),
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444'], borderWidth: 0
           }]
         },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom' }
-          }
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
         }
       });
     }
-  })();
-  {% endif %}
 
-
-
-  // for scrolling
-  // Smooth scroll on click
-  document.querySelectorAll('.section-nav .nav-link').forEach(link => {
-    link.addEventListener('click', function (e) {
-      e.preventDefault();
-      const targetID = this.getAttribute('href').substring(1);
-      const targetEl = document.getElementById(targetID);
-
-      window.scrollTo({
-        top: targetEl.offsetTop - 80,
-        behavior: 'smooth'
+    if (reportData.appendix.metrics.sector_segregation) {
+      new Chart(document.getElementById('sectorSegregationChart'), {
+        type: 'doughnut',
+        data: {
+          labels: reportData.appendix.metrics.sector_segregation.map(d => d.label),
+          datasets: [{
+            data: reportData.appendix.metrics.sector_segregation.map(d => d.value),
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+        }
       });
-    });
-  });
+    }
 
-  // ===== ACTIVE LINK HIGHLIGHT ON SCROLL =====
-  const sections = document.querySelectorAll('.page-section');
-  const navLinks = document.querySelectorAll('.section-nav .nav-link');
+    if (document.getElementById('profitBySessionChart') && chartsData.profit_by_session) {
+      new Chart(document.getElementById('profitBySessionChart'), {
+        type: 'bar',
+        data: {
+          labels: chartsData.profit_by_session.labels,
+          datasets: [{
+            data: chartsData.profit_by_session.values,
+            backgroundColor: chartsData.profit_by_session.values.map(v => v > 0 ? '#10b981' : '#ef4444'), borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { display: false }, y: { display: false } }
+        }
+      });
+    }
 
-  const observer = new IntersectionObserver(
-    entries => {
+    if (document.getElementById('trendAlignmentChart')) {
+      const ts = reportData.web_data ? reportData.web_data.kpis.trend_alignment_score : 0;
+      new Chart(document.getElementById('trendAlignmentChart'), {
+        type: 'doughnut',
+        data: { datasets: [{ data: [ts, 100 - ts], backgroundColor: ['#10b981', '#f1f5f9'], borderWidth: 0 }] },
+        options: { cutout: '80%', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    if (document.getElementById('newsTradingImpactChart')) {
+      const ne = reportData.web_data ? reportData.web_data.kpis.news_trading_win_rate : 0;
+      new Chart(document.getElementById('newsTradingImpactChart'), {
+        type: 'bar',
+        data: { labels: ['News Win Rate'], datasets: [{ data: [ne], backgroundColor: '#6366f1', borderRadius: 10 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, max: 100, display: false }, x: { display: false } }
+        }
+      });
+    }
+
+    // Section nav highlight
+    const navObs = new IntersectionObserver(entries => {
       entries.forEach(entry => {
-        const id = entry.target.getAttribute('id');
-
-        // When section becomes >40% visible
         if (entry.isIntersecting) {
-          navLinks.forEach(link =>
-            link.classList.remove('active-section')
-          );
-
-          const activeLink = document.querySelector(
-            `.section-nav .nav-link[data-target="${id}"]`
-          );
-
-          if (activeLink) {
-            activeLink.classList.add('active-section');
-          }
+          const id = entry.target.getAttribute('id');
+          document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active-section'));
+          const link = document.querySelector('.nav-link[data-target="' + id + '"]');
+          if (link) link.classList.add('active-section');
         }
       });
-    },
-    {
-      threshold: 0.4  // triggers highlight when 40% visible
-    }
-  );
+    }, { threshold: 0.25 });
+    document.querySelectorAll('section').forEach(s => navObs.observe(s));
 
-  // Observe all sections
-  sections.forEach(section => observer.observe(section));
-
-
-  // Collapsible Sections Logic
-  document.querySelectorAll('.collapsible-header').forEach(header => {
-    header.addEventListener('click', () => {
-      const targetID = header.getAttribute('data-target');
-      const content = document.getElementById(targetID);
-
-      header.classList.toggle('active');
-      if (content) {
-        content.classList.toggle('open');
-      }
+    document.querySelectorAll('.nav-link').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const t = document.querySelector(a.getAttribute('href'));
+        if (t) window.scrollTo({ top: t.offsetTop - 80, behavior: 'smooth' });
+      });
     });
-  });
 
-  // Enable Bootstrap Tooltips
-  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-  var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-    return new bootstrap.Tooltip(tooltipTriggerEl)
-  })
+    document.querySelectorAll('.ag-collapsible-header').forEach(h => {
+      h.addEventListener('click', () => {
+        const t = document.getElementById(h.dataset.target);
+        t.classList.toggle('open');
+        const icon = h.querySelector('.bi-chevron-down, .bi-chevron-up');
+        if (icon) { icon.classList.toggle('bi-chevron-down'); icon.classList.toggle('bi-chevron-up'); }
+      });
+    });
+
+    const fadeObs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); fadeObs.unobserve(e.target); }
+      });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.fade-in-up').forEach(el => fadeObs.observe(el));
+  });
 </script>
 
 {% endblock %}

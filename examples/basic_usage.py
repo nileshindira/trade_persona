@@ -7,7 +7,7 @@ Demonstrates how to use the Trading Persona Analyzer
 from src.data_processor import TradingDataProcessor
 from src.metrics_calculator import TradingMetricsCalculator
 from src.pattern_detector import TradingPatternDetector
-from src.llm_analyzer import OllamaAnalyzer
+from src.llm_analyzer import LLMAnalyzer
 from src.report_generator import ReportGenerator
 import yaml
 
@@ -19,7 +19,7 @@ with open('config.yaml', 'r') as f:
 data_processor = TradingDataProcessor(config)
 metrics_calculator = TradingMetricsCalculator(config)
 pattern_detector = TradingPatternDetector(config)
-llm_analyzer = OllamaAnalyzer(config)
+llm_analyzer = LLMAnalyzer(config)
 report_generator = ReportGenerator(config)
 
 # Process data

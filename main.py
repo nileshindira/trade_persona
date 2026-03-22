@@ -13,7 +13,7 @@ import sys
 from src.data_processor import TradingDataProcessor
 from src.metrics_calculator import TradingMetricsCalculator
 from src.pattern_detector import TradingPatternDetector
-from src.llm_analyzer import OllamaAnalyzer
+from src.llm_analyzer import LLMAnalyzer
 from src.report_generator import ReportGenerator
 from src.ema_calculator import EMACalculator
 from datetime import datetime, date
@@ -36,7 +36,7 @@ class TradingPersonaAnalyzer:
         self.data_processor = TradingDataProcessor(self.config)
         self.metrics_calculator = TradingMetricsCalculator(self.config)
         self.pattern_detector = TradingPatternDetector(self.config)
-        self.llm_analyzer = OllamaAnalyzer(self.config)
+        self.llm_analyzer = LLMAnalyzer(self.config)
         self.report_generator = ReportGenerator(config=self.config)
 
         # Initialize EMA calculator
@@ -59,11 +59,12 @@ class TradingPersonaAnalyzer:
         # Step 1: Load and process data
         logger.info("Loading data...")
         df = self.data_processor.load_data(data_filepath)
-        pnl_csv_df = pd.read_csv(pnl_csv)
-
-        # 🔥 Fix: force Date column into proper datetime format
-        pnl_csv_df['Date'] = pd.to_datetime(pnl_csv_df['Date'], errors='coerce')
-        nifty_chart_data = self.data_processor.get_nifty_data(pnl_csv_df)
+        nifty_chart_data = {}
+        if pnl_csv and str(pnl_csv).lower() != 'false':
+            pnl_csv_df = pd.read_csv(pnl_csv)
+            date_col = next((c for c in pnl_csv_df.columns if c.lower() == 'date'), 'Date')
+            pnl_csv_df['Date'] = pd.to_datetime(pnl_csv_df[date_col], errors='coerce')
+            nifty_chart_data = self.data_processor.get_nifty_data(pnl_csv_df)
 
         # Validate data
         is_valid, missing_cols = self.data_processor.validate_data(df)
@@ -97,7 +98,8 @@ class TradingPersonaAnalyzer:
         #
         # Step 2: Calculate metrics
         logger.info("Calculating metrics...")
-        metrics = self.metrics_calculator.calculate_all_metrics(df,pnl_csv)
+        metrics = self.metrics_calculator.calculate_all_metrics(df, pnl_csv, nifty_data=nifty_chart_data)
+
 
         # # Add EMA stats to metrics if available
         # if ema_stats:
@@ -124,12 +126,11 @@ class TradingPersonaAnalyzer:
 
         # Normalize NIFTY
         nifty_vals = list(nifty_chart_data.values())
-        print(nifty_vals)
-        if nifty_vals:
+        if nifty_vals and nifty_vals[0] != 0:
             start_idx = nifty_vals[0]
             norm_nifty_vals = [(v / start_idx) * 100 for v in nifty_vals]
         else:
-            norm_nifty_vals = []
+            norm_nifty_vals = [100] * len(nifty_vals) if nifty_vals else []
 
 
 
@@ -195,7 +196,7 @@ def main():
         args.trader_name,
         args.output_dir,
         include_ema=not args.no_ema,
-        pnl_csv = pnl_csv
+        pnl_csv=args.pnl_csv
     )
 
     if report:
@@ -203,18 +204,19 @@ def main():
         print("ANALYSIS COMPLETE")
         print("="*50)
         print(f"\nTrader: {args.trader_name}")
-        print(f"Total Trades: {report['executive_summary']['total_trades']}")
-        print(f"Net P&L: ₹{report['executive_summary']['net_pnl']:,.2f}")
-        print(f"Win Rate: {report['executive_summary']['win_rate']:.1f}%")
-        print(f"Risk Level: {report['executive_summary']['risk_level']}")
-        print(f"\nRisk Score: {report['risk_score']}/100")
+        print(f"Total Trades: {report['appendix']['metrics'].get('total_trades', 0)}")
+        print(f"Net P&L: ₹{report['hero']['topline'].get('net_pnl', 0):,.2f}")
+        print(f"Win Rate: {report['hero']['topline'].get('win_rate', 0):.1f}%")
+        print(f"Risk Level: {report['metadata'].get('risk_severity', 'N/A')}")
+        print(f"\nRisk Score: {report['metadata'].get('risk_score', 'N/A')}/100")
 
         # Display EMA stats if available
-        if 'ema_allocation' in report.get('metrics', {}):
+        metrics_dict = report.get('appendix', {}).get('metrics', {})
+        if 'ema_allocation' in metrics_dict:
             print("\n" + "="*50)
             print("EMA ALLOCATION SCORES")
             print("="*50)
-            ema_stats = report['metrics']['ema_allocation']
+            ema_stats = metrics_dict['ema_allocation']
             print(f"Stock EMA (Avg): {ema_stats['stock_ema']['mean']:.2f}")
             print(f"Nifty EMA (Avg): {ema_stats['nifty_ema']['mean']:.2f}")
             print(f"Midcap EMA (Avg): {ema_stats['midcap_ema']['mean']:.2f}")

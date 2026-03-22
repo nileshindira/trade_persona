@@ -1,15 +1,17 @@
 """
 Data Processor Module
-Handles data loading, cleaning, and preparation for analysis
+Handles data loading, cleaning, and preparation for analysis using SQLAlchemy
 """
-
+import json
+import os
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-from datetime import datetime, timedelta
 import logging
 import psycopg2
+from sqlalchemy import create_engine
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta, date
 
 class TradingDataProcessor:
     """Process and clean trading data from various sources"""
@@ -17,6 +19,21 @@ class TradingDataProcessor:
     def __init__(self, config: Dict):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        # Initialize engine for reuse
+        db_conf = self.config["database"]
+        self.engine = create_engine(f"postgresql://{db_conf['user']}:{db_conf['password']}@{db_conf['host']}:{db_conf.get('port', 5432)}/{db_conf['dbname']}")
+
+    def _get_base_symbol(self, symbol: str) -> str:
+        """Robust symbol extraction to match with database records (underlying/symbol)"""
+        s = str(symbol).upper().strip()
+        parts = s.split()
+        
+        # Handle formats like: "IO CE BANKNIFTY 31Jul2025 59500"
+        if len(parts) >= 3 and parts[1] in ("CE", "PE"):
+            return parts[2]
+            
+        # Handle formats like: "RELIANCE EQ"
+        return parts[0]
 
     def getadditionaldata(self, df: pd.DataFrame) -> pd.DataFrame:
         """Get additional data (scores, highs/lows, etc.) from database and merge with input DataFrame"""
@@ -24,683 +41,323 @@ class TradingDataProcessor:
             db_conf = self.config["database"]
             table_name = db_conf.get("table_name", "stock_data")
 
-            # --- Normalize & extract date range from input df ---
-            df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.date
+            # --- Normalize date range from input df ---
+            df["trade_datetime"] = pd.to_datetime(df["trade_date"], errors="coerce")
+            df["trade_date_only"] = df["trade_datetime"].dt.date
 
-            start_date = df["trade_date"].min()
-            end_date = df["trade_date"].max()
+            start_date = df["trade_date_only"].min()
+            end_date = df["trade_date_only"].max()
 
             if pd.isna(start_date) or pd.isna(end_date):
-                raise ValueError("Invalid trade_date values in input DataFrame")
+                return df
 
-            conn = psycopg2.connect(
-                dbname=db_conf["dbname"],
-                user=db_conf["user"],
-                password=db_conf["password"],
-                host=db_conf["host"],
-                port=db_conf.get("port", 5432)
-            )
-
-            # --- Fetch relevant columns from DB ---
+            # Fetch relevant columns from DB
             query = f"""
                 SELECT symbol, date, open, high, low, close, volume,
                        t_score, f_score, total_score,
                        is_52week_high, is_52week_low, is_alltime_high,
-                        is_alltime_low, is_event, atr, is_high_volume, is_news, news_category,
-                        market_behaviour, chart_charts, sector_ema
+                       is_alltime_low, is_event, atr, is_high_volume, is_news, news_category,
+                       market_behaviour, chart_charts, sector_ema
                 FROM {table_name}
-                WHERE date BETWEEN %s AND %s;
+                WHERE date >= %s AND date <= %s;
             """
 
-            db_df = pd.read_sql(query, conn, params=(start_date, end_date))
-            conn.close()
-
-            industry_sector_details_df = pd.read_excel("data/raw/industry_sector_detail.xlsx")
-            industry_sector_details_df.columns = industry_sector_details_df.columns.str.lower()
-            industry_sector_details_df["symbol"] = industry_sector_details_df["symbol"].str.upper()
-
-
+            db_df = pd.read_sql(query, self.engine, params=(start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            
             # Normalize column names
             db_df.columns = db_df.columns.str.lower()
+            db_df["date"] = pd.to_datetime(db_df["date"]).dt.date
+            db_df["symbol"] = db_df["symbol"].str.upper().str.strip()
 
-            # Convert date formats to comparable values
-            db_df["date"] = pd.to_datetime(db_df["date"], errors="coerce").dt.date
-            df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce").dt.date
-
-            # --- Preprocess symbols for faster match ---
-            # Extract possible base symbol tokens (first 4 space-separated parts)
-            df_tokens = df["symbol"].str.upper().str.split(" ").apply(lambda x: x[:4] if isinstance(x, list) else [])
-            df = df.assign(
-                token_0=df_tokens.str[0],
-                token_1=df_tokens.str[1],
-                token_2=df_tokens.str[2],
-                token_3=df_tokens.str[3]
+            # Merge logic for symbols (base symbol matching)
+            df['__match_sym'] = df['symbol'].apply(self._get_base_symbol)
+            
+            # Use vectorized merge
+            merged = pd.merge(
+                df,
+                db_df,
+                left_on=['__match_sym', 'trade_date_only'],
+                right_on=['symbol', 'date'],
+                how='left',
+                suffixes=('', '_db')
             )
-
-            db_df["symbol"] = db_df["symbol"].str.upper()
-
-            # --- Create index for fast lookup ---
-            db_df.drop_duplicates(subset=["symbol", "date"], keep='last', inplace=True)
-            db_df.set_index(["symbol", "date"], inplace=True)
-            db_df.sort_index(level=["symbol", "date"], inplace=True)
-            merged_rows = []
-            for i, row in df.iterrows():
-                trade_date = row["trade_date"]
-                candidates = []
-
-
-                for t in [row.get("token_0"), row.get("token_1"), row.get("token_2"), row.get("token_3")]:
-                    if pd.notna(t):
-                        try:
-                            candidates.append(db_df.loc[(t, trade_date)])
-                            break
-                        except KeyError:
-                            pass
-
-                if candidates:
-                    # Convert row to DataFrame
-                    left_df = pd.DataFrame([row]).reset_index(drop=True)
-
-                    # Convert candidate row(s) to DataFrame
-                    right = candidates[0]
-                    if isinstance(right, pd.Series):
-                        right_df = pd.DataFrame([right]).reset_index(drop=True)
-                    else:
-                        right_df = right.reset_index(drop=True)  # already DataFrame
-                    
-                    # Drop overlapping columns from right_df to avoid InvalidIndexError
-                    common_cols = [c for c in right_df.columns if c in left_df.columns or c == 'date']
-                    right_df.drop(columns=common_cols, inplace=True, errors='ignore')
-
-                    merged_data = pd.concat([left_df, right_df], axis=1)
-
-
-                else:
-                    merged_data = row.to_frame().T.reset_index(drop=True)
-
-                merged_rows.append(merged_data)
-            final_df = pd.concat(merged_rows, ignore_index=True)
-
-            self.logger.info(f"✅ Added additional DB data to {len(df)} records.")
-            final_df = final_df.merge(
-                industry_sector_details_df[["symbol", "industry"]]
-                    .rename(columns={"symbol": "token_2"}),
-                on="token_2",
-                how="left"
-            )
-
-            # Now safe to drop tokens
-            final_df.drop(
-                columns=["token_0", "token_1", "token_2", "token_3"],
-                inplace=True,
-                errors="ignore"
-            )
-            final_df["industry_sector_ema"] = final_df.apply(
-                lambda r: r["sector_ema"].get(r["industry"])
-                if isinstance(r["sector_ema"], dict) else None,
-                axis=1
-            )
-            final_df.drop(columns=["sector_ema"], inplace=True)
-
-            return final_df
+            
+            # Cleanup
+            merged.drop(columns=['symbol_db', 'date', '__match_sym', 'trade_date_only'], inplace=True, errors='ignore')
+            return merged
 
         except Exception as e:
             self.logger.error(f"❌ Error getting additional data: {str(e)}")
-            raise
-
-    def get_nifty_data(self, df):
-        try:
-            db_conf = self.config["database"]
-            table_name = db_conf.get("table_name", "stock_data")
-
-            conn = psycopg2.connect(
-                dbname=db_conf["dbname"],
-                user=db_conf["user"],
-                password=db_conf["password"],
-                host=db_conf["host"],
-                port=db_conf.get("port", 5432)
-            )
-
-            # Extract unique dates AND convert to string
-            dates = df['Date'].dt.strftime("%m/%d/%Y").unique().tolist()
-
-            # SQL with placeholders
-            query = f"""
-                SELECT date, close
-                FROM {table_name}
-                WHERE symbol = 'NIFTY' AND date IN %s;
-            """
-
-            # Execute query
-            db_df = pd.read_sql(query, conn, params=(tuple(dates),))
-
-
-            conn.close()
-
-            # Convert DB dates to string as well
-            db_df['date'] = pd.to_datetime(db_df['date']).dt.strftime("%Y-%m-%d")
-            db_df = db_df.sort_values("date")
-            # Build dict: {"2024-01-01": close}
-            nifty_data = dict(zip(db_df['date'], db_df['close']))
-            # print(nifty_data)
-            return nifty_data
-
-        except Exception as e:
-            print("Error:", e)
-            return {}, {}
+            return df
 
     def _enrich_from_market_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Enrich DF with data from 'market_data' database:
-        1. nse_stock: dist_from_52w_high_pct, pct_chg_1w, pct_chg_1m, pct_chg_6m
-        2. nse_index_ind: NIFTY, NIFTYMIDCAP150, NIFTYSMLCAP250 context
-        """
-        if df.empty:
-            return df
-
+        """Enrich with data from 'market_data' database"""
+        if df.empty: return df
         try:
-            # Re-use config but switch DB name
             db_conf = self.config["database"].copy()
             db_conf["dbname"] = "market_data"
+            mkt_engine = create_engine(f"postgresql://{db_conf['user']}:{db_conf['password']}@{db_conf['host']}:{db_conf.get('port', 5432)}/{db_conf['dbname']}")
+            
+            # Use trade_date_only for matching
+            df['trade_date_only'] = pd.to_datetime(df['trade_date']).dt.date
+            unique_dates = df['trade_date_only'].dropna().unique()
+            date_strs = [d.strftime("%Y-%m-%d") for d in unique_dates]
+            if not date_strs: return df
 
-            unique_dates = df['trade_date'].dropna().unique()
-            if len(unique_dates) == 0:
-                return df
-                
-            # Convert numpy dates to python dates/strings for SQL
-            date_strs = [str(d) for d in unique_dates]
-            date_tuple = tuple(date_strs)
+            # 1. nse_stock
+            query_stock = "SELECT symbol, date, dist_from_52w_high_pct, pct_chg_1w, pct_chg_1m, pct_chg_6m FROM nse_stock WHERE date IN %s"
+            mkt_stock_df = pd.read_sql(query_stock, mkt_engine, params=(tuple(date_strs),))
             
-            # Identify symbols to fetch from nse_stock
-            # Clean symbols to match DB (e.g. "RELIANCE" from "RELIANCE EQ")
-            # This is a heuristic; might need adjustment based on valid symbols
-            symbols = df['symbol'].unique().tolist()
-            # Try to match raw symbols or standard tokens
-            # For efficiency in SQL, we might just fetch all for the DATES.
-            # Assuming nse_stock isn't massive for just a few days of data.
-            
-            conn = psycopg2.connect(
-                dbname=db_conf["dbname"],
-                user=db_conf["user"],
-                password=db_conf["password"],
-                host=db_conf["host"],
-                port=db_conf.get("port", 5432)
-            )
-
-            # --- 1. Fetch nse_stock data (Momentum Metrics) ---
-            # We fetch for ALL available stocks on these DATES to ensure better matching
-            # filtering by symbol list in SQL can be tricky with partial matches.
-            query_stock = f"""
-                SELECT symbol, date, 
-                       dist_from_52w_high_pct, pct_chg_1w, pct_chg_1m, pct_chg_6m
-                FROM nse_stock
-                WHERE date IN %s
-            """
-            
-            # Handle single date tuple quirk in Python (x,)
-            params = (date_tuple,)
-            
-            mkt_stock_df = pd.read_sql(query_stock, conn, params=params)
-             
             if not mkt_stock_df.empty:
                 mkt_stock_df['date'] = pd.to_datetime(mkt_stock_df['date']).dt.date
-                # Pre-process match keys
-                # We'll simple-match on 'symbol' (uppercase) and 'date'
-                # But df['symbol'] might be 'RELIANCE EQ'. 
-                # We'll try to extract the first token from df['symbol'] for matching.
-                
-                # Create a lookup key in main df
-                df['__base_sym'] = df['symbol'].astype(str).str.split().str[0].str.upper().str.strip()
                 mkt_stock_df['symbol'] = mkt_stock_df['symbol'].str.upper().str.strip()
-                
-                # Merge
-                # We left join to keep all trades
-                df = df.merge(
-                    mkt_stock_df, 
-                    left_on=['__base_sym', 'trade_date'], 
-                    right_on=['symbol', 'date'], 
-                    how='left', 
-                    suffixes=('', '_mkt')
-                )
-                
-                # Cleanup
-                df.drop(columns=['__base_sym', 'symbol_mkt', 'date_mkt', 'date'], inplace=True, errors='ignore')
+                df['__match_sym'] = df['symbol'].apply(self._get_base_symbol)
+                df = df.merge(mkt_stock_df, left_on=['__match_sym', 'trade_date_only'], right_on=['symbol', 'date'], how='left', suffixes=('', '_mkt'))
+                df.drop(columns=['__match_sym', 'symbol_mkt', 'date_mkt', 'date'], inplace=True, errors='ignore')
 
-            # --- 2. Fetch nse_index_ind data (Market Context) ---
-            # We need specific indices
-            indices = ['NIFTY', 'NIFTYMIDCAP150', 'NIFTYSMLCAP250']
+            # 2. nse_index_ind
+            indices = ('NIFTY', 'NIFTYMIDCAP150', 'NIFTYSMLCAP250')
+            query_index = "SELECT symbol, date, close, pct_chg_1w, ema_50, ema_200 FROM nse_index_ind WHERE symbol IN %s AND date IN %s"
+            mkt_index_df = pd.read_sql(query_index, mkt_engine, params=(indices, tuple(date_strs)))
             
-            query_index = f"""
-                SELECT symbol, date, close, pct_chg_1w, ema_50, ema_200
-                FROM nse_index_ind
-                WHERE symbol IN %s AND date IN %s
-            """
-            
-            mkt_index_df = pd.read_sql(query_index, conn, params=(tuple(indices), date_tuple))
-            conn.close()
-
             if not mkt_index_df.empty:
                 mkt_index_df['date'] = pd.to_datetime(mkt_index_df['date']).dt.date
-                
-                # Pivot this data so each Date has columns like:
-                # nifty_close, midcap_close, etc.
-                
-                # Map DB symbols to readable prefixes
-                sym_map = {
-                    'NIFTY': 'nifty50',
-                    'NIFTYMIDCAP150': 'midcap',
-                    'NIFTYSMLCAP250': 'smlcap'
-                }
-                mkt_index_df['prefix'] = mkt_index_df['symbol'].map(sym_map).fillna('other')
-                
-                # We want to pivot on 'date'
-                # Columns to pivot: close, pct_chg_1w, ema_50, ema_200
-                
-                pivoted_dfs = []
-                for idx_sym, prefix in sym_map.items():
-                    subset = mkt_index_df[mkt_index_df['symbol'] == idx_sym].copy()
-                    if subset.empty:
-                        continue
-                        
-                    subset = subset[['date', 'close', 'pct_chg_1w', 'ema_50', 'ema_200']]
-                    subset.columns = ['date', f'{prefix}_close', f'{prefix}_pct_chg_1w', f'{prefix}_ema_50', f'{prefix}_ema_200']
-                    pivoted_dfs.append(subset)
-                
-                if pivoted_dfs:
-                    # Merge all index data info a single market_context_df per date
-                    from functools import reduce
-                    market_ctx = reduce(
-                        lambda left, right: pd.merge(left, right, on='date', how='outer'), 
-                        pivoted_dfs
-                    )
-                    
-                    # Merge into main df
-                    df = df.merge(market_ctx, left_on='trade_date', right_on='date', how='left')
+                sym_map = {'NIFTY': 'nifty50', 'NIFTYMIDCAP150': 'midcap', 'NIFTYSMLCAP250': 'smlcap'}
+                for sym, prefix in sym_map.items():
+                    subset = mkt_index_df[mkt_index_df['symbol'] == sym].copy()
+                    if subset.empty: continue
+                    subset = subset[['date', 'close']].rename(columns={'close': f'{prefix}_close'})
+                    df = df.merge(subset, left_on='trade_date_only', right_on='date', how='left')
                     df.drop(columns=['date'], inplace=True, errors='ignore')
 
-            self.logger.info("✅ Enriched with Market Data (NSE Stock + Indices)")
+            df.drop(columns=['trade_date_only'], inplace=True, errors='ignore')
             return df
-
         except Exception as e:
-            self.logger.error(f"❌ Error enriching market data: {str(e)}")
-            # Return original df on failure to avoid pipeline break
+            self.logger.error(f"❌ Error enriching market data: {e}")
             return df
 
+    def load_data(self, filepath: str) -> pd.DataFrame:
+        """Main load entry point used by main.py"""
+        df = pd.read_csv(filepath)
+        df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
+        
+        # Rename mapping to ensure we have 'trade_date', 'symbol', 'transaction_type', 'quantity', 'price'
+        # The ANISH_NEW.csv uses these names already (lowercase)
+        
+        df['trade_date'] = pd.to_datetime(df['trade_date'], errors='coerce')
+        df = df.dropna(subset=['trade_date'])
+        
+        df = self.getadditionaldata(df)
+        df = self._enrich_from_market_data(df)
+        # Note: clean_data, classify_positions, and pair_trades are called sequentially in main.py
+        return df
 
-    # =========================================================
-    # Data Loading
-    # =========================================================
-    def load_data(self, filepath: str, source_type: str = "csv") -> pd.DataFrame:
-        """Load trading data from file + enrich + clean + classify positions."""
-        try:
-            if source_type == "csv":
-                df = pd.read_csv(filepath)
-            elif source_type == "excel":
-                df = pd.read_excel(filepath)
-            elif source_type == "json":
-                df = pd.read_json(filepath)
-            else:
-                raise ValueError(f"Unsupported source type: {source_type}")
-
-            self.logger.info(f"📂 Loaded {len(df)} records from {filepath}")
-
-            # 1) Add DB scores/technicals (stock_db)
-            df = self.getadditionaldata(df)
-
-            # 1.5) Add Market Data (market_data DB: nse_stock, nse_index_ind)
-            df = self._enrich_from_market_data(df)
-
-            # 2) Clean & normalize
-            df = self.clean_data(df)
-
-            # 3) Classify positions (OPEN/CLOSED and LONG-OPEN/SHORT-OPEN)
-            df = self.classify_positions(df)
-
-            return df
-
-        except Exception as e:
-            self.logger.error(f"❌ Error loading data: {str(e)}")
-            raise
-
-    # =========================================================
-    # Data Validation
-    # =========================================================
     def validate_data(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
-        """Validate data has required columns and structure"""
         required_cols = self.config["data"]["required_columns"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
+        missing = [col for col in required_cols if col not in df.columns]
+        return (len(missing) == 0, missing)
 
-        if missing_cols:
-            return False, missing_cols
-        return True, []
-
-    # =========================================================
-    # Data Cleaning
-    # =========================================================
-    def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean and preprocess trading data"""
-        df = df.copy()
-
-        # Convert to datetime safely
-        df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
-
-        # Drop rows with missing or invalid trade dates
-        missing_dates = df["trade_date"].isna().sum()
-        if missing_dates > 0:
-            self.logger.warning(f"⚠️ Dropping {missing_dates} rows with invalid or missing trade_date values.")
-            df = df.dropna(subset=["trade_date"])
-
-        # Drop missing essential fields
-        df = df.dropna(subset=["symbol", "price", "quantity"])
-
-        # Derived columns
-        df["trade_hour"] = df["trade_date"].dt.hour
-        df["trade_day_of_week"] = df["trade_date"].dt.dayofweek
-        df["trade_month"] = df["trade_date"].dt.month
-
-        # Compute trade value if absent
-        if "trade_value" not in df.columns:
-            df["trade_value"] = df["price"] * df["quantity"]
-
-        # Sort chronologically
-        df = df.sort_values("trade_date").reset_index(drop=True)
-
-        self.logger.info(f"🧹 Cleaned data: {len(df)} records")
-        return df
-
-    # =========================================================
-    # Trade Pairing (FIFO-based P&L)
-    # =========================================================
-    from pathlib import Path
-    import pandas as pd
-
-    def pair_trades(
-            self,
-            df: pd.DataFrame,
-            output_dir: str = "data/trade_exports",
-            trader_name: str = "Trader",
-    ) -> pd.DataFrame:
+    def handle_expired_options(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        FIFO trade pairing.
-        PnL is computed STRICTLY as (sell_price - buy_price) * matched_qty
-        Open trades carry pnl = 0 (no mark-to-market).
+        If an option position is short and the expiry has passed, add a 0-price BUY 
+        trade at 3:30 PM on the expiry date to close the position.
         """
-
-        df = df.copy()
-        df["transaction_type"] = df["transaction_type"].str.upper()
-        df["pnl"] = 0.0
-        df["holding_period_minutes"] = 0.0
-
-        df = df.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
-
-        trade_pairs = []
-
-        for symbol, symbol_df in df.groupby("symbol", sort=False):
-
-            buy_queue = []  # [qty, price, date, t_score, f_score]
-            sell_queue = []  # [qty, price, date, t_score, f_score]
-
-            for idx, row in symbol_df.iterrows():
-                typ = row["transaction_type"]
-                qty = float(row["quantity"])
-                price = float(row["price"])
-                date = row["trade_date"]
-                t_score = row.get("t_score")
-                f_score = row.get("f_score")
-
-                # ===================== BUY =====================
-                if typ == "BUY":
-                    remaining = qty
-
-                    while remaining > 0 and sell_queue:
-                        s_qty, s_price, s_date, s_t, s_f = sell_queue[0]
-                        matched = min(remaining, s_qty)
-
-                        pnl = (s_price - price) * matched
-                        hold = (date - s_date).total_seconds() / 60
-
-                        trade_pairs.append({
-                            "symbol": symbol,
-                            "buy_date": date,
-                            "buy_price": price,
-                            "buy_qty": matched,
-                            "sell_date": s_date,
-                            "sell_price": s_price,
-                            "sell_qty": matched,
-                            "pnl": pnl,
-                            "holding_period_minutes": hold,
-                            "status": "CLOSED",
-                        })
-
-                        df.loc[idx, "pnl"] += pnl
-                        df.loc[idx, "holding_period_minutes"] += hold
-
-                        remaining -= matched
-                        s_qty -= matched
-
-                        if s_qty == 0:
-                            sell_queue.pop(0)
-                        else:
-                            sell_queue[0][0] = s_qty
-
-                    if remaining > 0:
-                        buy_queue.append([remaining, price, date, t_score, f_score])
-
-                # ===================== SALE =====================
-                elif typ == "SALE":
-                    remaining = qty
-
-                    while remaining > 0 and buy_queue:
-                        b_qty, b_price, b_date, b_t, b_f = buy_queue[0]
-                        matched = min(remaining, b_qty)
-
-                        pnl = (price - b_price) * matched
-                        hold = (date - b_date).total_seconds() / 60
-
-                        trade_pairs.append({
-                            "symbol": symbol,
-                            "buy_date": b_date,
-                            "buy_price": b_price,
-                            "buy_qty": matched,
-                            "sell_date": date,
-                            "sell_price": price,
-                            "sell_qty": matched,
-                            "pnl": pnl,
-                            "holding_period_minutes": hold,
-                            "status": "CLOSED",
-                        })
-
-                        df.loc[idx, "pnl"] += pnl
-                        df.loc[idx, "holding_period_minutes"] += hold
-
-                        remaining -= matched
-                        b_qty -= matched
-
-                        if b_qty == 0:
-                            buy_queue.pop(0)
-                        else:
-                            buy_queue[0][0] = b_qty
-
-                    if remaining > 0:
-                        sell_queue.append([remaining, price, date, t_score, f_score])
-
-            # ========== OPEN POSITIONS (NO MTM HERE) ==========
-            for qty, price, date, _, _ in buy_queue:
-                trade_pairs.append({
-                    "symbol": symbol,
-                    "buy_date": date,
-                    "buy_price": price,
-                    "buy_qty": qty,
-                    "sell_date": None,
-                    "sell_price": 0,
-                    "sell_qty": qty,
-                    "pnl": (0-price)*qty,
-                    "holding_period_minutes": 0.0,
-                    "status": "OPEN",
-                })
-
-            for qty, price, date, _, _ in sell_queue:
-                trade_pairs.append({
-                    "symbol": symbol,
-                    "buy_date": None,
-                    "buy_price": 0,
-                    "buy_qty": qty,
-                    "sell_date": date,
-                    "sell_price": price,
-                    "sell_qty": qty,
-                    "pnl": (price-0)*qty,
-                    "holding_period_minutes": 0.0,
-                    "status": "OPEN",
-                })
-
-        # ================= EXPORTS =================
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        detailed_file = output_path / f"{trader_name}_paired_trades_detailed.csv"
-        summary_file = output_path / f"{trader_name}_trade_pairs_summary.csv"
-
-        df.to_csv(detailed_file, index=False)
-        self.logger.info(f"📊 Detailed trades saved: {detailed_file}")
-
-        summary_df = pd.DataFrame(trade_pairs)
-        summary_df.to_csv(summary_file, index=False)
-        self.logger.info(f"📘 Trade pairs saved: {summary_file}")
-
-        realized_pnl = summary_df["pnl"].sum()
-        self.logger.info(f"✅ Realized FIFO PnL: ₹{realized_pnl:,.2f}")
-
-        return df
-
-    # =========================================================
-    # Daily Aggregation
-    # =========================================================
-    def aggregate_daily_stats(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Aggregate trades by day"""
-        daily_stats = (
-            df.groupby(df["trade_date"].dt.date)
-            .agg(
-                {
-                    "trade_value": "sum",
-                    "pnl": "sum",
-                    "symbol": "count",
-                    "quantity": "sum",
-                }
-            )
-            .rename(columns={"symbol": "num_trades"})
+        if df.empty: return df
+        
+        # Calculate net quantity for each symbol to find open positions
+        # Use a copy for calculation to determine which symbols need closing
+        df_calc = df.copy()
+        df_calc['_signed_qty'] = df_calc.apply(
+            lambda r: r['quantity'] if str(r['transaction_type']).upper() == 'BUY' else -r['quantity'], 
+            axis=1
         )
-        return daily_stats
+        net_qtys = df_calc.groupby('symbol')['_signed_qty'].sum()
+        
+        new_trades = []
+        today = date.today()
+        
+        for symbol, net_qty in net_qtys.items():
+            # Only consider short positions (net_qty < 0)
+            if net_qty < -1e-5: 
+                opt_info = self._parse_option_symbol(symbol)
+                # Check if it's an option and the expiry date has passed
+                if opt_info and today > opt_info['expiry']:
+                    # close it at 0 on expiry day at 3:30 PM
+                    expiry_date = opt_info['expiry']
+                    expiry_ts = datetime.combine(expiry_date, datetime.strptime("15:30:00", "%H:%M:%S").time())
+                    
+                    # Create the closing "BUY" trade row
+                    new_trade = {
+                        'trade_date': expiry_ts,
+                        'symbol': symbol,
+                        'transaction_type': 'BUY',
+                        'quantity': abs(float(net_qty)),
+                        'price': 0.0,
+                        'trade_hour': 15,
+                        'trade_day_of_week': expiry_ts.weekday(),
+                        'trade_month': expiry_ts.month,
+                        'trade_value': 0.0,
+                        'Date': expiry_ts,
+                        'Symbol': symbol.upper()
+                    }
+                    
+                    # Ensure all original columns are present to avoid concat issues
+                    for col in df.columns:
+                        if col not in new_trade:
+                            new_trade[col] = np.nan
+                            
+                    new_trades.append(new_trade)
+                    self.logger.info(f"Adding synthetic expiry close for {symbol}: BUY {abs(net_qty)} @ 0.0 on {expiry_ts}")
+        
+        if new_trades:
+            # Append new trades and re-sort
+            new_df = pd.DataFrame(new_trades)
+            df = pd.concat([df, new_df], ignore_index=True)
+            df = df.sort_values('trade_date').reset_index(drop=True)
+            
+        return df
 
-    # def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
-    #     """
-    #     Classify each symbol into OPEN / CLOSED positions
-    #     and each trade row into OPEN-LEG or CLOSED-LEG.
-    #
-    #     Ensures transaction_type consistency and removes ambiguity for MetricsCalculator.
-    #     """
-    #     df = df.copy()
-    #     df["transaction_type"] = df["transaction_type"].str.upper()
-    #
-    #     # ----- Compute net qty at SYMBOL level -----
-    #     df["_signed_qty"] = df.apply(
-    #         lambda r: r["quantity"] if r["transaction_type"] == "BUY"
-    #         else -r["quantity"],
-    #         axis=1
-    #     )
-    #
-    #     symbol_net = df.groupby("symbol")["_signed_qty"].sum().rename("symbol_net_qty")
-    #
-    #     # merge net qty into df
-    #     df = df.merge(symbol_net, left_on="symbol", right_index=True, how="left")
-    #
-    #     # ----- Position status -----
-    #     df["position_status"] = df["symbol_net_qty"].apply(
-    #         lambda q: "OPEN" if q != 0 else "CLOSED"
-    #     )
-    #
-    #     # ----- Long / Short / Mixed classification -----
-    #     # long if buys > sells, short if sells > buys
-    #
-    #     def classify_direction(g):
-    #         buy_qty = g.loc[g["transaction_type"] == "BUY", "quantity"].sum()
-    #         sell_qty = g.loc[g["transaction_type"] == "SALE", "quantity"].sum()
-    #
-    #         if buy_qty > sell_qty:
-    #             return "LONG"
-    #         elif sell_qty > buy_qty:
-    #             return "SHORT"
-    #         else:
-    #             return "MIXED"  # equal qty or hedged structure
-    #
-    #     direction_map = df.groupby("symbol").apply(classify_direction).rename("long_short_type")
-    #     df = df.merge(direction_map, left_on="symbol", right_index=True, how="left")
-    #
-    #     # ----- Mark each row as OPEN-LEG / CLOSED-LEG -----
-    #     df["row_trade_category"] = df.apply(
-    #         lambda r: "OPEN-LEG" if r["position_status"] == "OPEN" else "CLOSED-LEG",
-    #         axis=1
-    #     )
-    #
-    #     # cleanup
-    #     df.drop(columns=["_signed_qty"], inplace=True)
-    #
-    #     return df
+    def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['trade_date'] = pd.to_datetime(df['trade_date'])
+        for col in ['quantity', 'price']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(float)
+        
+        # Derived fields
+        df['trade_hour'] = df['trade_date'].dt.hour
+        df['trade_day_of_week'] = df['trade_date'].dt.dayofweek
+        df['trade_month'] = df['trade_date'].dt.month
+        df['trade_value'] = df['price'] * df['quantity']
+        df['Date'] = df['trade_date'] # For backend components
+        df['Symbol'] = df['symbol'].str.upper() # For backend components
+        
+        # Add synthetic trades for expired options
+        df = self.handle_expired_options(df)
+        
+        return df.sort_values('trade_date').reset_index(drop=True)
+
+    def pair_trades(self, df: pd.DataFrame, output_dir: str = "data/reports", trader_name: str = "Trader") -> pd.DataFrame:
+        """Full FIFO trade pairing logic with holding period calculation"""
+        df = df.copy().sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+        df["pnl"] = 0.0
+        df["holding_period"] = 0.0 # Minutes
+        
+        trade_pairs = []
+        for symbol, g in df.groupby("symbol"):
+            buy_q, sell_q = [], []
+            for idx, row in g.iterrows():
+                qty, price, t = float(row['quantity']), float(row['price']), row['trade_date']
+                if row['transaction_type'].upper() == 'BUY':
+                    matched_weighted_hold = 0.0
+                    total_matched_qty = 0.0
+                    
+                    while qty > 0 and sell_q:
+                        sq_list = sell_q[0] # [qty, price, time]
+                        m = min(qty, sq_list[0])
+                        df.loc[idx, 'pnl'] += (sq_list[1] - price) * m
+                        
+                        # Holding period (buy closes a sell/short)
+                        duration = (t - sq_list[2]).total_seconds() / 60.0
+                        matched_weighted_hold += duration * m
+                        total_matched_qty += m
+                        
+                        qty -= m
+                        sq_list[0] -= m
+                        if sq_list[0] <= 0: sell_q.pop(0)
+                        
+                    if total_matched_qty > 0:
+                        df.loc[idx, 'holding_period'] = matched_weighted_hold / total_matched_qty
+                        
+                    if qty > 0: buy_q.append([qty, price, t])
+                else: # Transaction type is SALE/SELL
+                    matched_weighted_hold = 0.0
+                    total_matched_qty = 0.0
+                    
+                    while qty > 0 and buy_q:
+                        bq_list = buy_q[0] # [qty, price, time]
+                        m = min(qty, bq_list[0])
+                        df.loc[idx, 'pnl'] += (price - bq_list[1]) * m
+                        
+                        # Holding period (sell closes a buy/long)
+                        duration = (t - bq_list[2]).total_seconds() / 60.0
+                        matched_weighted_hold += duration * m
+                        total_matched_qty += m
+                        
+                        qty -= m
+                        bq_list[0] -= m
+                        if bq_list[0] <= 0: buy_q.pop(0)
+                        
+                    if total_matched_qty > 0:
+                        df.loc[idx, 'holding_period'] = matched_weighted_hold / total_matched_qty
+                        
+                    if qty > 0: sell_q.append([qty, price, t])
+        
+        # Save output for diagnostics
+        os.makedirs(output_dir, exist_ok=True)
+        df.to_csv(os.path.join(output_dir, f"{trader_name}_paired_trades_detailed.csv"), index=False)
+        return df
+
+    def get_nifty_data(self, df: pd.DataFrame) -> Dict:
+        """Standardized NIFTY retrieval for charts"""
+        try:
+            dates = pd.to_datetime(df['Date']).dt.strftime("%Y-%m-%d").unique().tolist()
+            if not dates: return {}
+            query = "SELECT date, close FROM stock_data WHERE symbol = 'NIFTY' AND date IN %s"
+            db_df = pd.read_sql(query, self.engine, params=(tuple(dates),))
+            db_df['date'] = pd.to_datetime(db_df['date']).dt.strftime("%Y-%m-%d")
+            return dict(zip(db_df['date'], db_df['close']))
+        except Exception as e:
+            self.logger.error(f"❌ NIFTY data error: {e}")
+            return {}
+
+    def _parse_option_symbol(self, symbol: str) -> Optional[Dict]:
+        try:
+            s = str(symbol).upper().strip()
+            parts = s.split()
+            if len(parts) >= 3 and parts[1] in ("CE", "PE"):
+                # "IO CE BANKNIFTY 31Jul2025 59500" -> parts[2] is underlying
+                expiry = datetime.strptime(parts[3], "%d%b%Y").date() if len(parts) > 3 and any(m in parts[3] for m in ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]) else None
+                # Alternative format check if expiry is parts[0]
+                if not expiry:
+                    try: expiry = datetime.strptime(parts[0], "%d%b%Y").date()
+                    except: pass
+                
+                strike = float(parts[2]) if parts[2].replace('.','',1).isdigit() else 0.0
+                if strike == 0.0 and len(parts) > 4: # Format: IO CE BANKNIFTY 31Jul2025 59500
+                    strike = float(parts[4]) if parts[4].replace('.','',1).isdigit() else 0.0
+
+                opt_type = parts[1]
+                underlying = parts[2]
+                return {"expiry": expiry, "strike": strike, "type": opt_type, "underlying": underlying}
+        except: pass
+        return None
 
     def classify_positions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Classify each symbol into OPEN/CLOSED and LONG-OPEN/SHORT-OPEN
-        based on net quantity (BUY - SELL).
-        This removes ambiguity for MetricsCalculator.
-        """
+        """Classify each symbol's current position status"""
         df = df.copy()
-        # Safety: remove any duplicate column names that might have crept in during merges
-        if df.columns.duplicated().any():
-            self.logger.warning(f"⚠️ Removing duplicate columns: {df.columns[df.columns.duplicated()].unique().tolist()}")
-            df = df.loc[:, ~df.columns.duplicated()]
-            
-        df["transaction_type"] = df["transaction_type"].astype(str).str.upper()
-
-        # Treat both 'SALE' and 'SELL' as sell side
-        def signed_qty(row):
-            typ = row["transaction_type"]
-            if typ == "BUY":
-                return row["quantity"]
-            elif typ in ("SALE", "SELL"):
-                return -row["quantity"]
-            return 0.0
-
-        df["_signed_qty"] = df.apply(signed_qty, axis=1)
-
-        # --- SYMBOL-LEVEL NET QTY ---
-        symbol_net_map = df.groupby("symbol")["_signed_qty"].sum()
-        df["symbol_net_qty"] = df["symbol"].map(symbol_net_map)
-
-
-        #--- add the logic to close the net option sell derivatives to 0 if they are out of money , given we have to find the stock spot and compute expiry spot and then on day of expiry we have to make it 0 if the open positions is not closed after expiry date. ---
-
-        # --- POSITION STATUS: OPEN/CLOSED ---
-        df["position_status"] = df["symbol_net_qty"].apply(
-            lambda q: "OPEN" if q != 0 else "CLOSED"
-        )
-
-        # --- POSITION TYPE: LONG-OPEN / SHORT-OPEN (only meaningful when OPEN) ---
-        def classify_pos_type(q, status):
-            if status == "OPEN":
-                if q > 0:
-                    return "LONG-OPEN"
-                elif q < 0:
-                    return "SHORT-OPEN"
-            return ""  # for CLOSED or zero
-
-        df["position_type"] = df.apply(
-            lambda r: classify_pos_type(r["symbol_net_qty"], r["position_status"]),
-            axis=1,
-        )
-
-        # Optional: mark each row as part of an open-leg or closed-leg ecosystem
-        df["row_trade_category"] = df["position_status"].map(
-            lambda s: "OPEN-LEG" if s == "OPEN" else "CLOSED-LEG"
-        )
-
+        df["_signed_qty"] = df.apply(lambda r: r["quantity"] if r["transaction_type"].upper() == "BUY" else -r["quantity"], axis=1)
+        net_map = df.groupby("symbol")["_signed_qty"].sum().to_dict()
+        
+        today = date.today()
+        for sym, q in net_map.items():
+            if q == 0: continue
+            opt = self._parse_option_symbol(sym)
+            if opt and today > opt["expiry"]: net_map[sym] = 0.0
+                
+        df["symbol_net_qty"] = df["symbol"].map(net_map)
+        df["position_status"] = df["symbol_net_qty"].apply(lambda q: "OPEN" if q != 0 else "CLOSED")
+        df["position_type"] = df.apply(lambda r: ("LONG-OPEN" if r["symbol_net_qty"] > 0 else "SHORT-OPEN") if r["position_status"] == "OPEN" else "", axis=1)
         df.drop(columns=["_signed_qty"], inplace=True)
         return df
+
+    def aggregate_daily_stats(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Helper for daily pnl aggregation"""
+        return df.groupby(df['trade_date'].dt.date).agg({'pnl': 'sum', 'trade_value': 'sum', 'symbol': 'count'}).rename(columns={'symbol': 'num_trades'})
+
+    def fetch_minute_candles(self, symbols: List[str], start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        try:
+            query = "SELECT symbol, candle_ts, open_price, high_price, low_price, close_price, volume FROM candle_data WHERE symbol = ANY(%s) AND candle_ts >= %s AND candle_ts <= %s"
+            return pd.read_sql(query, self.engine, params=(symbols, start_date, end_date))
+        except Exception as e:
+            self.logger.error(f"❌ Candle fetch error: {e}")
+            return pd.DataFrame()

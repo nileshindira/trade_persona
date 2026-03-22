@@ -1,4 +1,6 @@
 import json
+import os
+
 import markdown
 import numpy as np
 from pathlib import Path
@@ -29,6 +31,7 @@ class ReportGenerator:
             loader=FileSystemLoader(str(self.template_dir)),
             autoescape=True
         )
+        self.jinja.filters['markdown'] = lambda text: markdown.markdown(str(text), extensions=['extra', 'tables', 'fenced_code'])
 
 
 
@@ -125,71 +128,112 @@ class ReportGenerator:
 
 
     def generate_report(self, metrics, patterns, analysis, trader_name="Trader"):
-        analysis_text = analysis.get("analysis_text", {})
-        summary = analysis.get("summary_data", {})
+        """
+        Main entry point for report generation. 
+        Returns a structured dictionary optimized for clear information hierarchy.
+        """
+        master = analysis.get("master_persona", {})
         web = analysis.get("web_data", {})
-
-        # Convert markdown → HTML (preserve dicts/lists)
-        analysis_html = {}
-        for k, v in analysis_text.items():
-            if isinstance(v, str):
-                analysis_html[k] = markdown.markdown(v, extensions=["extra", "tables", "nl2br"])
-            else:
-                analysis_html[k] = v
-
-        hard_flags = web.get("hard_flags", {})
-        risk_severity = web.get("risk_severity", "LOW")
-
-        # Inject new chart data from metrics if available
-        if "charts" not in web:
-            web["charts"] = {}
-
-        if "market_behaviour_distribution" in metrics:
-            web["charts"]["market_behaviour_distribution"] = metrics["market_behaviour_distribution"]
-
-        if "industry_distribution" in metrics:
-            web["charts"]["industry_distribution"] = metrics["industry_distribution"]
-
-
-        # Construct report with ALL possible keys to ensure compatibility
-        return {
-            "metadata": {
-                "trader_name": trader_name,
-                "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "analysis_period": metrics.get("date_range", "N/A"),
-            },
-            "executive_summary": self._exec_summary(metrics, summary),
-            "detailed_metrics": metrics,
-            "metrics": metrics,
-            "patterns": patterns,
-            "detected_patterns": patterns,
-            "analysis_text": analysis_html,
-            "analysis_html": analysis_html,
-            "ai_insights": analysis_html,
-            "analysis_raw": analysis_text,
-            "summary_data": summary,
-            "hard_flags": hard_flags,
-            "risk_severity": risk_severity,
-            "risk_score": self._risk_score(metrics, patterns),
-            "web_data": web,
-            "web": web,
-            "trade_analytics": metrics.get("trade_analytics", {}),
-
-            # Derived / Specific Web Data
-            "recommendations": self._format_recommendations(
-                analysis_text.get("recommendations", "")
-            ),
-            
-            # Combine positions for JS table
-            "positions_data": (
-                metrics.get("positions", []) + 
-                metrics.get("closed_positions", [])
-            ),
-
-            "all_kpis": web.get("kpis", {}),
-            "persona_scores": web.get("persona_scores", {}),
-            "charts_data": web.get("charts", {}),
+        
+        # 1. Build HERO section
+        identity = master.get("identity", {})
+        hero = {
+            "trader_name": trader_name,
+            "analysis_period": metrics.get("date_range", "N/A"),
+            "persona_name": identity.get("trader_name", "Unknown Trader"),
+            "headline": master.get("headline", "Trading performance analysis"),
+            "topline": {
+                "net_pnl": metrics.get("total_pnl_combined", metrics.get("total_pnl", 0)),
+                "win_rate": metrics.get("win_rate", 0),
+                "profit_factor": metrics.get("profit_factor", 0),
+                "max_drawdown_pct": metrics.get("max_drawdown_pct", 0)
+            }
         }
+
+        # 2. Build DIAGNOSIS section
+        def _get_val(obj, key, fallback=None):
+            val = obj.get(key)
+            if not val or val == "N/A" or val == "Unknown":
+                return fallback
+            return val
+
+        _archetype_name = metrics.get("archetype", {}).get("name", "")
+        
+        diagnosis = {
+            "trader_type":    _get_val(identity, "trader_type") or _get_val(identity, "primary_strategy") or _archetype_name or "Unknown",
+            "inferred_style": _get_val(identity, "primary_strategy", _archetype_name or "N/A"),
+            "natural_edge":   _get_val(identity, "natural_edge", _get_val(identity, "narrative", "Analyze your data for a natural edge."))[:500],
+            "risk_profile":   identity.get("risk_profile", {"appetite": "N/A", "handling": "N/A"}),
+            "narrative":      identity.get("narrative", "Analysis pending..."),
+            "efficiency_metrics": analysis.get("efficiency_metrics", {}),
+            "market_context":   analysis.get("market_context_metrics", {}),
+        }
+
+
+
+        # 3. Build improvement plan
+        plan = master.get("improvement_plan", {})
+        improvement_plan = {
+            "next_5_sessions": plan.get("next_5_sessions", []),
+            "next_30_days":    plan.get("next_30_days",    []),
+            "biggest_lever":   plan.get("biggest_lever",   "N/A"),
+        }
+
+        # 4. Populate Evidence Ledger from LLM strengths + mistakes
+        evidence_ledger = []
+        for s in master.get("strengths", []):
+            evidence_ledger.append({
+                "claim":              s.get("title", ""),
+                "confidence":         8,
+                "supporting_metrics": [s.get("evidence", "")],
+                "supporting_trades":  [],
+            })
+        for m in master.get("mistakes", []):
+            evidence_ledger.append({
+                "claim":              m.get("title", ""),
+                "confidence":         7,
+                "supporting_metrics": [m.get("evidence", "")],
+                "supporting_trades":  [],
+            })
+
+        # 5. Construct Final Report
+        archetype = metrics.get("archetype", {})
+        report = {
+            "hero": hero,
+            "diagnosis":       diagnosis,
+            "strengths":       master.get("strengths",              []),
+            "mistakes":        master.get("mistakes",               []),
+            "improvement_plan": improvement_plan,
+            "transformation":  master.get("simulated_transformation", []),
+            "final_verdict":   master.get("final_verdict",          ""),
+            "evidence_ledger": evidence_ledger,
+            # Persona enrichment (Phase 2)
+            "archetype":       archetype,
+            "trade_dna":       metrics.get("trade_dna",            {}),
+            "pressure_map":    metrics.get("behavioral_pressure_map", {}),
+            "consistency_score": metrics.get("behavioral_consistency_score", 0),
+            "emotional_leakage": metrics.get("emotional_leakage_index",      0),
+            # Pressure tendencies for the cognitive bias section
+            "pressure_patterns": metrics.get("behavioral_pressure_map", {}).get("tendencies", []),
+            "metadata": {
+                "generated_at":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "risk_score":    self._risk_score(metrics, patterns),
+                "risk_severity": web.get("risk_severity", "LOW"),
+            },
+            "web_data":      web,
+            "analysis_text": analysis.get("analysis_text", {}),
+            "hard_flags":    web.get("hard_flags", {}),
+            "appendix": {
+                "metrics":        metrics,
+                "charts":         web.get("charts",         {}),
+                "positions":      (metrics.get("positions", []) + metrics.get("closed_positions", [])),
+                "persona_scores": web.get("persona_scores", {}),
+                "patterns":       patterns,
+            }
+        }
+
+        return report
+
 
     # --------------------------------------------------------------
     # SUMMARY HELPERS
@@ -203,7 +247,9 @@ class ReportGenerator:
             "max_drawdown_pct": s.get("max_drawdown_pct", 0),
             "risk_level": s.get("risk_level", self._risk_level(m)),
             "profit_factor": s.get("profit_factor", 0),
-            "open_positions_count": m.get("open_positions_count", 0)
+            "open_positions_count": m.get("open_positions_count", 0),
+            "day_mtm": m.get("day_mtm", 0),
+            "risk_handling_score": m.get("persona_traits", {}).get("risk_handling", 0)
         }
 
     def _risk_level(self, m):
@@ -242,9 +288,9 @@ class ReportGenerator:
 
         html = tpl.render(
             report=report_safe,
-            static_path="static",
-            theme_css=f"themes/{theme}.css", # Keep as backup
-            theme_css_content=theme_css_content # New embedded content
+            static_path="../../src/static",
+            theme_css=f"../../src/static/css/themes/{theme}.css", # Keep as backup
+            theme_css_html=f"<style>\n{theme_css_content}\n</style>" if theme_css_content else "" # New embedded content
         )
 
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
@@ -273,7 +319,8 @@ def export_html_from_json(json_path, html_path, base_dir=None):
 
 
 if __name__ == "__main__":
-    with open("D:/PycharmProjects/trade_persona/data/reports/Trader_report.json", "r", encoding="utf-8") as f:
+
+    with open(r"/home/system-4/PycharmProjects/trade_persona/data/reports/Anish_report.json", "r", encoding="utf-8") as f:
         data = json.load(f)
     
     # Patch for missing context_performance in older JSONs
@@ -286,4 +333,4 @@ if __name__ == "__main__":
         }
 
     gen = ReportGenerator()
-    gen.export_html(data, "D:/PycharmProjects/trade_persona/data/reports/restored_report.html", theme="light")
+    gen.export_html(data, "/home/system-4/PycharmProjects/trade_persona/data/reports/restored1_report.html", theme="light")

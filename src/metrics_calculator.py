@@ -30,8 +30,10 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List
 import logging
+import os
 # from scipy.stats import skew, kurtosis
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from sqlalchemy import create_engine
 
 
 
@@ -44,6 +46,40 @@ class TradingMetricsCalculator:
         self.risk_free_rate = config['metrics']['risk_free_rate']
         self.trading_days = config['metrics']['trading_days_per_year']
         self.logger = logging.getLogger(__name__)
+
+        # Load sector mapping from local CSV
+        self.sector_map = {}
+        try:
+            mapping_path = "/home/system-4/PycharmProjects/trade_persona/industry_sector_detail - All.csv"
+            if os.path.exists(mapping_path):
+                map_df = pd.read_csv(mapping_path)
+                if "Symbol" in map_df.columns and "Industry_O" in map_df.columns:
+                    # Map Symbol -> Industry_O
+                    self.sector_map = dict(zip(
+                        map_df["Symbol"].astype(str).str.upper().str.strip(), 
+                        map_df["Industry_O"].astype(str).str.strip()
+                    ))
+                    self.logger.info(f"Successfully loaded {len(self.sector_map)} sector mappings.")
+                else:
+                    self.logger.warning(f"Sector mapping file at {mapping_path} missing 'Symbol' or 'Industry_O'.")
+            else:
+                self.logger.warning(f"Sector mapping file not found at {mapping_path}")
+        except Exception as e:
+            self.logger.error(f"Error loading sector mapping: {e}")
+
+    def _map_sectors(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Map symbols to sectors using the loaded mapping file."""
+        if not self.sector_map:
+            if "industry" not in df.columns:
+                df["industry"] = "Other Sector"
+            return df
+        
+        def get_sector(symbol):
+            base_sym, _ = self.classify_instrument(symbol)
+            return self.sector_map.get(base_sym.upper().strip(), "Other Sector")
+
+        df["industry"] = df["symbol"].apply(get_sector)
+        return df
 
 
     def classify_instrument(self,symbol: str):
@@ -109,8 +145,13 @@ class TradingMetricsCalculator:
     # =========================================================
     # Public Entry
     # =========================================================
-    def calculate_all_metrics(self, df: pd.DataFrame, pnl_csv :str) -> Dict:
+    def calculate_all_metrics(self, df: pd.DataFrame, pnl_csv :str, nifty_data: Dict = None) -> Dict:
         """Calculate all trading metrics and persona traits with extended analytics."""
+        df = df.copy()
+        
+        # Populate industry column using mapping file
+        df = self._map_sectors(df)
+
         df = df.copy()
 
         # Normalize columns (defensive)
@@ -133,12 +174,20 @@ class TradingMetricsCalculator:
 
 
         # -------- Core metrics (existing) --------
+        # Filter to only "traded" rows (matched trades with non-zero pnl)
+        # for metrics that should reflect actual trade decisions
+        traded_df = df[df['pnl'] != 0]  # Exclude unmatched open legs
         metrics = {
-            'total_trades': len(df),
+            'total_trades': len(traded_df),  # Actual trade count, not CSV rows
+            'total_rows': len(df),  # Raw row count for reference
             'total_pnl': self.calculate_total_pnl(df),
             'win_rate': self.calculate_win_rate(df),
+            'overall_win_rate': self.calculate_overall_win_rate(df),
             'avg_win': self.calculate_avg_win(df),
             'avg_loss': self.calculate_avg_loss(df),
+            'avg_win_pct_of_all_wins': self.calculate_avg_win_pct(df),
+            'avg_loss_pct_of_all_losses': self.calculate_avg_loss_pct(df),
+            'multivariate_pattern_analysis': self._compute_multivariate_pattern_analysis(df),
             'profit_factor': self.calculate_profit_factor(df),
             'sharpe_ratio': self.calculate_sharpe_ratio(df),
             'sortino_ratio': self.calculate_sortino_ratio(df),
@@ -153,7 +202,7 @@ class TradingMetricsCalculator:
             'avg_trades_per_day': self.calculate_avg_trades_per_day(df),
             'date_range': self.get_date_range(df),
             'trading_days': self.get_trading_days(df),
-            'pnl_timeline': self._build_pnl_timeline(pnl_csv),
+            'pnl_timeline': self._build_pnl_timeline(pnl_csv, nifty_data),
         }
 
         # -------- Extended position & MTM analytics --------
@@ -207,11 +256,16 @@ class TradingMetricsCalculator:
             metrics["hit_rate_alltime_high"] = df["is_alltime_high"].mean() * 100
 
         # PnL Shape / Distribution
-        metrics["pnl_volatility"] = self.pnl_df["MTM"].std()
-        metrics["pnl_skewness"] = self.pnl_df["MTM"].skew()
-        metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
-        metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
-        metrics["value_at_risk_95"] = self.pnl_df["MTM"].quantile(0.05)
+        if "pnl" in self.pnl_df.columns:
+            metrics["pnl_volatility"] = self.pnl_df["pnl"].std()
+            metrics["pnl_skewness"] = self.pnl_df["pnl"].skew()
+            metrics["pnl_kurtosis"] = self.pnl_df["pnl"].kurt()
+            metrics["value_at_risk_95"] = self.pnl_df["pnl"].quantile(0.05)
+        elif "MTM" in self.pnl_df.columns:
+            metrics["pnl_volatility"] = self.pnl_df["MTM"].std()
+            metrics["pnl_skewness"] = self.pnl_df["MTM"].skew()
+            metrics["pnl_kurtosis"] = self.pnl_df["MTM"].kurt()
+            metrics["value_at_risk_95"] = self.pnl_df["MTM"].quantile(0.05)
 
         # --- 🧩 NEW: Behavioral Context Metrics ---
         # 1. Event Based Trading
@@ -353,8 +407,9 @@ class TradingMetricsCalculator:
         if "total_score" in df.columns:
             metrics["score_alignment_effectiveness"] = df["total_score"].corr(df["pnl"])
         if "pnl" in df.columns:
-            avg_win = self.pnl_df.loc[self.pnl_df["MTM"] > 0, "MTM"].mean()
-            avg_loss = self.pnl_df.loc[self.pnl_df["MTM"] < 0, "MTM"].mean()
+            pcol = "pnl" if "pnl" in self.pnl_df.columns else "MTM"
+            avg_win = self.pnl_df.loc[self.pnl_df[pcol] > 0, pcol].mean()
+            avg_loss = self.pnl_df.loc[self.pnl_df[pcol] < 0, pcol].mean()
             metrics["reward_to_risk_balance"] = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
             # ================================
             # NEW – Instrument Cluster Metrics (symbol → category)
@@ -421,6 +476,66 @@ class TradingMetricsCalculator:
             metrics["option_equity_trade_pct"] = float(cluster_pct.get("OPTION-EQUITY", 0))
             metrics["option_index_trade_pct"] = float(cluster_pct.get("OPTION-INDEX", 0))
 
+            # --- NEW: Sector-based Segregation (Value Distribution) ---
+            if 'industry' in df.columns and 'trade_value' in df.columns:
+                sector_value = df.groupby("industry")["trade_value"].sum().astype(float)
+                total_val = float(sector_value.sum())
+                if total_val > 0:
+                    sector_val_pct = (sector_value / total_val * 100).round(2)
+                    metrics["sector_segregation"] = [
+                        {"label": s, "value": float(p)}
+                        for s, p in sector_val_pct.items()
+                    ]
+                else:
+                    metrics["sector_segregation"] = []
+
+        # ================================
+        # Execution Efficiency (Entry/Exit) & Timing
+        # ================================
+        if all(col in df.columns for col in ["high", "low", "price", "pnl", "quantity"]):
+            def calc_diagnostics(row):
+                r = row["high"] - row["low"]
+                if r <= 0: return 0.5, 0.0
+                
+                if row["transaction_type"] == "BUY":
+                    # Proximity to Low (0.0 = bought at exact low, 1.0 = bought at exact high)
+                    eff = (row["price"] - row["low"]) / r
+                    return eff, 0.0
+                else: # SALE / SELL
+                    # Proximity to High (0.0 = sold at exact high, 1.0 = sold at exact low)
+                    eff = (row["high"] - row["price"]) / r
+                    
+                    # Giveback: how much of the day's potential move did we leave on the table?
+                    try:
+                        pnl_per_qty = row["pnl"] / (row["quantity"] + 1e-6)
+                        entry_cost = row["price"] - pnl_per_qty
+                        
+                        potential_profit = row["high"] - entry_cost
+                        actual_profit = row["pnl"]  # Use the actual PnL
+                        
+                        if potential_profit > 0 and actual_profit > 0:
+                            giveback = (row["high"] - row["price"]) / potential_profit
+                        else:
+                            giveback = 0.0
+                    except:
+                        giveback = 0.0
+                    return eff, giveback
+            
+            diag_results = df.apply(calc_diagnostics, axis=1)
+            df["entry_efficiency"] = diag_results.apply(lambda x: x[0])
+            df["profit_giveback_raw"] = diag_results.apply(lambda x: x[1])
+            
+            buy_df = df[df["transaction_type"] == "BUY"]
+            sell_df = df[df["transaction_type"].isin(["SALE", "SELL"])]
+
+            metrics["avg_entry_efficiency"] = float(buy_df["entry_efficiency"].mean()) if not buy_df.empty else 0.5
+            metrics["avg_exit_efficiency"] = float(sell_df["entry_efficiency"].mean()) if not sell_df.empty else 0.5
+            metrics["avg_profit_giveback"] = float(sell_df["profit_giveback_raw"].mean()) if not sell_df.empty else 0.0
+            
+            # Since efficiency is now 'proximity' (0 = best), invert it for the 0-100 score
+            metrics["timing_skill_score"] = float((1.0 - metrics["avg_entry_efficiency"]) * 100)
+            metrics["exit_quality_score"] = float((1.0 - metrics["avg_exit_efficiency"]) * 100)
+
         # ================================
         # NEW – Market Behaviour & Industry Distributions for Pie Charts
         # ================================
@@ -446,8 +561,621 @@ class TradingMetricsCalculator:
             else:
                 metrics["industry_distribution"] = []
 
+        # ==================================
+        # 🧩 NEW – Evidence Packs for LLM Grounding
+        # ==================================
+        metrics["evidence_packs"] = self._extract_evidence_packs(df)
+
+        # ==================================
+        # 🆕 Sectoral Profit Analysis
+        # ==================================
+        metrics["sectoral_analysis"] = self._compute_sectoral_analysis(df)
+
+        # ==================================
+        # 🆕 Option Writer vs Buyer Detection
+        # ==================================
+        metrics["option_strategy"] = self._detect_option_strategy(df)
+
+        # ==================================
+        # 🆕 PnL Reconciliation Check (FIFO vs MTM)
+        # ==================================
+        fifo_pnl = metrics.get('total_pnl', 0)
+        mtm_pnl = self.cumulative_pnl
+        if mtm_pnl != 0:
+            pnl_gap_pct = abs(fifo_pnl - mtm_pnl) / max(abs(fifo_pnl), abs(mtm_pnl), 1) * 100
+        else:
+            pnl_gap_pct = 0
+        metrics["pnl_reconciliation"] = {
+            "fifo_pnl": round(fifo_pnl, 2),
+            "mtm_pnl": round(mtm_pnl, 2),
+            "gap_pct": round(pnl_gap_pct, 1),
+            "is_aligned": pnl_gap_pct < 10,
+        }
+        if pnl_gap_pct > 10:
+            self.logger.warning(
+                f"⚠️ PnL MISMATCH: FIFO={fifo_pnl:,.0f} vs MTM={mtm_pnl:,.0f} ({pnl_gap_pct:.1f}% diff)"
+            )
+
+        # ==================================
+        # 🆕 Strategy Inference & Behavioral Simulations
+        # ==================================
+        metrics["strategy_inference"] = self._infer_trading_strategy(df, metrics)
+        metrics["what_if_analysis"] = self._simulate_what_if(df)
+        metrics["loss_patterns"] = self._mine_loss_patterns(df)
+        metrics["recent_market_context"] = self._get_recent_market_context(df)
+
+        # ==================================
+        # 🎯 Phase 2 – Persona Depth Layer
+        # ==================================
+        metrics["archetype"] = self._classify_archetype(metrics)
+        metrics["trade_dna"] = self._compute_trade_dna(df, metrics)
+        metrics["behavioral_pressure_map"] = self._compute_pressure_map(df)
+        metrics["behavioral_consistency_score"] = self._compute_consistency_score(df, metrics)
+        metrics["emotional_leakage_index"] = self._compute_emotional_leakage(metrics)
 
         return metrics
+
+
+    # =================================================================
+    # PHASE 2 — PERSONA DEPTH METHODS
+    # =================================================================
+
+    def _classify_archetype(self, metrics: Dict) -> Dict:
+        """Rule-based archetype classification from calculated metrics."""
+        win_rate    = metrics.get("win_rate", 0)
+        hold_min    = metrics.get("avg_holding_period", 0)
+        total_t     = metrics.get("total_trades", 1)
+        fomo        = metrics.get("loss_patterns", {}).get("fomo_trades", 0)
+        opt_strat   = metrics.get("option_strategy", {}).get("strategy_type", "")
+        pnl_vol     = metrics.get("pnl_volatility", 0)
+        consec_loss = metrics.get("consecutive_losses", 0)
+        news_count  = metrics.get("evidence_packs", {}).get("fomo_entries", [])
+
+        fomo_count  = metrics.get("evidence_packs", {}).get("fomo_count", 0)
+        fomo_ratio = fomo_count / max(total_t, 1)
+        hold_days  = hold_min / 60 / 24  # convert minutes to days
+
+        # Priority order — first matching rule wins
+        if opt_strat == "OPTION_WRITER" and win_rate > 55:
+            return {"name": "The Premium Farmer", "code": "PREMIUM_FARMER",
+                    "tagline": "Systematic income collector via option selling", "icon": "🌾",
+                    "family": "Income", "confidence": 0.88}
+        if win_rate > 72 and hold_min < 90 and fomo_ratio < 0.1:
+            return {"name": "The Precision Sniper", "code": "PRECISION_SNIPER",
+                    "tagline": "High-accuracy, low-volume, surgical execution", "icon": "🎯",
+                    "family": "Precision", "confidence": 0.85}
+        if fomo_ratio > 0.15 or (win_rate < 50 and pnl_vol > 10000):
+            return {"name": "The FOMO Chaser", "code": "FOMO_CHASER",
+                    "tagline": "Reactive, impulse-driven entry patterns", "icon": "🏃",
+                    "family": "Reactive", "confidence": 0.80}
+        if hold_days > 2 and win_rate > 55:
+            return {"name": "The Patient Swing Trader", "code": "SWING_TRADER",
+                    "tagline": "Multi-day positional plays with patience", "icon": "📅",
+                    "family": "Swing", "confidence": 0.82}
+        if hold_min < 45 and total_t > 500:
+            return {"name": "The Momentum Scalper", "code": "MOMENTUM_SCALPER",
+                    "tagline": "High-frequency short holds targeting quick moves", "icon": "⚡",
+                    "family": "Momentum", "confidence": 0.78}
+        if len(news_count) > 3 and win_rate > 58:
+            return {"name": "The Contrarian Oracle", "code": "CONTRARIAN_ORACLE",
+                    "tagline": "News-triggered contra trades with edge", "icon": "🔮",
+                    "family": "Contrarian", "confidence": 0.75}
+        if consec_loss > 6 and pnl_vol > 15000:
+            return {"name": "The Chaos Trader", "code": "CHAOS_TRADER",
+                    "tagline": "Unpredictable patterns, high variance profile", "icon": "🌀",
+                    "family": "Chaotic", "confidence": 0.70}
+        # Default fallback — overnight mean-reversion
+        return {"name": "The Overnight Oracle", "code": "OVERNIGHT_ORACLE",
+                "tagline": "Overnight mean-reversion with a high win rate", "icon": "🌙",
+                "family": "Swing", "confidence": 0.72}
+
+    def _compute_trade_dna(self, df: pd.DataFrame, metrics: Dict) -> Dict:
+        """Derive the trader's behavioral fingerprint from trade data."""
+        hold_min  = metrics.get("avg_holding_period", 0)
+        intraday  = metrics.get("intraday_vs_overnight", {})
+        opt_strat = metrics.get("option_strategy", {})
+        t_skill   = metrics.get("timing_skill_score", 0)
+
+        # Preferred session
+        intra_cnt = intraday.get("intraday", {}).get("count", 0) if isinstance(intraday, dict) else 0
+        over_cnt  = intraday.get("overnight", {}).get("count", 0) if isinstance(intraday, dict) else 0
+        session   = "Intraday" if intra_cnt > over_cnt else "Overnight"
+
+        # Instrument preference
+        opt_count = opt_strat.get("option_trade_count", 0)
+        eq_count  = metrics.get("total_trades", 1) - opt_count
+        instrument = "Options" if opt_count > eq_count else "Equity"
+
+        # Hold duration class
+        if hold_min < 30:
+            hold_class = "Scalp (< 30 min)"
+        elif hold_min < 240:
+            hold_class = "Short-Term (< 4 hrs)"
+        elif hold_min < 1440:
+            hold_class = "Intraday (< 1 day)"
+        else:
+            hold_class = "Swing (Multi-day)"
+
+        # News signal check
+        news_trades = len(metrics.get("evidence_packs", {}).get("fomo_entries", []))
+        signal_style = "News-Driven" if news_trades > 5 else "Score-Driven" if "total_score" in df.columns else "Chart-Pattern"
+
+        # Entry quality
+        if t_skill > 60:
+            entry_q = "Strong"
+        elif t_skill > 30:
+            entry_q = "Average"
+        else:
+            entry_q = "Weak"
+
+        return {
+            "preferred_session":    session,
+            "preferred_instrument": instrument,
+            "hold_duration_class":  hold_class,
+            "signal_style":         signal_style,
+            "entry_quality":        entry_q,
+            "avg_hold_minutes":     round(hold_min, 1),
+        }
+
+    def _compute_pressure_map(self, df: pd.DataFrame) -> Dict:
+        """Analyze behavioral shifts under pressure (after losses/wins)."""
+        if df.empty or "pnl" not in df.columns:
+            return {}
+
+        df_s = df.sort_values("trade_datetime").reset_index(drop=True) if "trade_datetime" in df.columns else df.reset_index(drop=True)
+        df_s["_prev_pnl"] = df_s["pnl"].shift(1)
+        df_s["_prev_neg"]  = df_s["_prev_pnl"] < 0
+        df_s["_prev_pos"]  = df_s["_prev_pnl"] > 0
+
+        # Revenge Trade Index: avg PnL after a loss trade
+        after_loss = df_s[df_s["_prev_neg"] == True]["pnl"]
+        revenge_idx = float(after_loss.mean()) if not after_loss.empty else 0.0
+
+        # Hot-hand bias: avg PnL after a win
+        after_win  = df_s[df_s["_prev_pos"] == True]["pnl"]
+        hot_hand   = float(after_win.mean()) if not after_win.empty else 0.0
+
+        # Loss aversion: hold longer when losing?
+        if "holding_period" in df_s.columns:
+            hold_win  = df_s[df_s["pnl"] > 0]["holding_period"].mean()
+            hold_loss = df_s[df_s["pnl"] < 0]["holding_period"].mean()
+            loss_aversion = round(hold_loss / max(hold_win, 1), 2) if hold_win else 0
+        else:
+            loss_aversion = 0
+
+        # Interpretation
+        tendencies = []
+        if revenge_idx < -500:
+            tendencies.append({"pattern": "Revenge Trading", "impact": "High", "signature": f"Avg PnL after a loss: ₹{revenge_idx:,.0f}"})
+        if hot_hand > 0 and after_win.std() > after_loss.std():
+            tendencies.append({"pattern": "Hot-Hand Overconfidence", "impact": "Medium", "signature": "Increases position after winning streaks"})
+        if loss_aversion > 1.5:
+            tendencies.append({"pattern": "Loss-Hope Holding", "impact": "High", "signature": f"Holds losing trades {loss_aversion}× longer than winners"})
+
+        return {
+            "revenge_trade_index": round(revenge_idx, 2),
+            "hot_hand_avg_pnl_after_win": round(hot_hand, 2),
+            "loss_aversion_ratio": loss_aversion,
+            "tendencies": tendencies,
+        }
+
+    def _compute_consistency_score(self, df: pd.DataFrame, metrics: Dict) -> float:
+        """Single 0–100 score measuring behavioral consistency."""
+        win_rate    = metrics.get("win_rate", 50)
+        max_dd_pct  = abs(metrics.get("max_drawdown_pct", 0))
+        consec_win  = metrics.get("consecutive_wins", 0)
+        consec_loss = metrics.get("consecutive_losses", 1)
+        streak_ratio = consec_win / max(consec_loss, 1)
+
+        # Weekly win-rate variance (stability)
+        weekly_wr_var = 0.0
+        if "trade_date" in df.columns and "pnl" in df.columns:
+            df_c = df.copy()
+            df_c["_week"] = pd.to_datetime(df_c["trade_date"], errors="coerce").dt.isocalendar().week
+            weekly_stats = df_c.groupby("_week")["pnl"].apply(lambda x: (x > 0).mean() * 100)
+            if len(weekly_stats) > 1:
+                weekly_wr_var = float(weekly_stats.std())
+
+        stability_score = max(0, 100 - weekly_wr_var) * 0.4
+        drawdown_score  = max(0, 100 - max_dd_pct) * 0.3
+        streak_score    = min(100, streak_ratio * 20) * 0.3
+
+        return round(stability_score + drawdown_score + streak_score, 1)
+
+    def _compute_emotional_leakage(self, metrics: Dict) -> float:
+        """
+        Emotional Leakage Index (0–100): higher = more irrational behavior detected.
+        Calculated using normalized severity scores for FOMO, Loss Averaging, 
+        Revenge Trading, and Loss Aversion.
+        """
+        total_trades = max(metrics.get("total_trades", 0), 1)
+
+        evidence = metrics.get("evidence_packs", {})
+        pressure = metrics.get("behavioral_pressure_map", {})
+
+        # 1. Retrieve raw counts from evidence packs or list lengths (if not yet updated)
+        fomo_count    = evidence.get("fomo_count", len(evidence.get("fomo_entries", [])))
+        avg_count     = evidence.get("loss_averaging_count", len(evidence.get("loss_averaging", [])))
+        revenge_count = evidence.get("revenge_count", len(evidence.get("revenge_sequences", [])))
+
+        # 2. Retrieve pressure metrics
+        revenge_idx   = pressure.get("revenge_trade_index", 0.0)
+        loss_aversion = pressure.get("loss_aversion_ratio", 1.0)
+        avg_loss      = abs(metrics.get("avg_loss", 0.0)) or 1.0
+
+        # --- Sub-Component 1: FOMO Severity (s_fomo) ---
+        # 20% FOMO trades = 1.0 severity
+        s_fomo = min(1.0, fomo_count / max(1, total_trades * 0.20))
+
+        # --- Sub-Component 2: Loss Averaging Severity (s_avg) ---
+        # 15% trades with loss averaging = 1.0 severity
+        s_avg = min(1.0, avg_count / max(1, total_trades * 0.15))
+
+        # --- Sub-Component 3: Revenge Trading Severity (s_revenge) ---
+        # Frequency (15% = 1.0) + Performance Degradation (avg error > avg_loss)
+        s_revenge_freq = min(1.0, revenge_count / max(1, total_trades * 0.15))
+        s_revenge_pnl  = min(1.0, max(0.0, -revenge_idx) / avg_loss)
+        s_revenge      = 0.5 * s_revenge_freq + 0.5 * s_revenge_pnl
+
+        # --- Sub-Component 4: Holding Losers (s_hold) ---
+        # 1.0 = baseline, 3.0+ = severe bias
+        s_hold = 0.0 if loss_aversion <= 1 else min(1.0, (loss_aversion - 1.0) / 2.0)
+
+        # Combine with weights
+        eli = 100 * (
+            0.30 * s_fomo +
+            0.25 * s_avg + 
+            0.25 * s_revenge + 
+            0.20 * s_hold
+        )
+        
+        # Store individual severities for granular insight
+        metrics["behavioral_severities"] = {
+            "fomo": round(s_fomo, 2),
+            "averaging": round(s_avg, 2),
+            "revenge": round(s_revenge, 2),
+            "holding": round(s_hold, 2)
+        }
+        
+        return round(min(100.0, max(0.0, eli)), 1)
+
+    def _get_recent_market_context(self, df: pd.DataFrame) -> Dict:
+        """Fetch minute-level data & news for the most recently traded symbols over the last 3 active days."""
+
+        context = {"per_minute_data_t_plus_1": [], "news": []}
+        try:
+            if "trade_date" not in df.columns or df.empty:
+                return context
+
+            # Identify last 3 trading days
+            recent_dates = sorted(df["trade_date"].dropna().unique())[-3:]
+            recent_trades = df[df["trade_date"].isin(recent_dates)]
+            symbols = recent_trades["symbol"].unique().tolist()
+            if not symbols:
+                return context
+
+            # Fetch Minute Data + T+1
+            start_dt = pd.to_datetime(recent_dates[0]).strftime("%Y-%m-%d")
+            end_dt = (pd.to_datetime(recent_dates[-1]) + timedelta(days=2)).strftime("%Y-%m-%d")
+
+            db_conf = self.config["database"]
+            engine = create_engine(f"postgresql://{db_conf['user']}:{db_conf['password']}@{db_conf['host']}:{db_conf.get('port', 5432)}/{db_conf['dbname']}")
+
+            # 1. Fetch 1-min Candle Data
+            query_candles = """
+                SELECT symbol, MIN(candle_ts) as start_time, MAX(candle_ts) as end_time,
+                       MAX(high_price) as range_high, MIN(low_price) as range_low,
+                       SUM(volume) as total_volume, AVG(open_interest) as avg_oi
+                FROM candle_data
+                WHERE symbol = ANY(%s) AND candle_ts >= %s AND candle_ts <= %s
+                GROUP BY symbol;
+            """
+            candles_df = pd.read_sql(query_candles, engine, params=(symbols, start_dt, end_dt))
+            
+            # Format nicely for LLM context (avoid dumping huge raw arrays)
+            for _, row in candles_df.iterrows():
+                context["per_minute_data_t_plus_1"].append({
+                    "symbol": row["symbol"],
+                    "period": f"{row['start_time']} to {row['end_time']}",
+                    "high": float(row["range_high"]) if pd.notnull(row["range_high"]) else None,
+                    "low": float(row["range_low"]) if pd.notnull(row["range_low"]) else None,
+                    "volume": float(row["total_volume"]) if pd.notnull(row["total_volume"]) else None,
+                    "avg_open_interest": float(row["avg_oi"]) if pd.notnull(row["avg_oi"]) else None
+                })
+            
+            if "news_category" in recent_trades.columns:
+                news_df = recent_trades[recent_trades["is_news"] == True]
+                for _, row in news_df.iterrows():
+                    context["news"].append({
+                        "symbol": row["symbol"],
+                        "date": str(row["trade_date"]),
+                        "category": str(row["news_category"])
+                    })
+        except Exception as e:
+            self.logger.error(f"Error fetching recent market context: {e}")
+
+        return context
+
+    def _extract_evidence_packs(self, df: pd.DataFrame) -> Dict:
+        """
+        Extract specific trade clusters as 'evidence' for the LLM to ground its claims.
+        Focus: Inefficient exits, FOMO entries, Revenge/Spirals, and Loss Averaging.
+        Calculates total counts for behavioral frequency analysis.
+        """
+        evidence = {
+            "fomo_count": 0,
+            "loss_averaging_count": 0,
+            "revenge_count": 0,
+            "inefficient_exits": [],
+            "fomo_entries": [],
+            "revenge_sequences": [],
+            "loss_averaging": []
+        }
+        
+        # Ensure trade_datetime exists
+        if "trade_datetime" not in df.columns:
+            df["trade_datetime"] = pd.to_datetime(df["trade_date"])
+
+        # 1. Inefficient Winning Exits (Profit Leakage)
+        winners = df[df["pnl"] > 0].copy()
+        if not winners.empty and "entry_efficiency" in winners.columns:
+             # For SELL trades, 'entry_efficiency' is actually 'exit_efficiency'
+             inefficient_exits = winners[winners["transaction_type"] == "SELL"].sort_values("entry_efficiency")
+             evidence["inefficient_exits"] = inefficient_exits[["symbol", "trade_date", "pnl", "entry_efficiency"]].head(5).to_dict("records")
+
+        # 2. FOMO-like Entries (BUY at high extremes)
+        fomo_all = df[
+            (df["transaction_type"] == "BUY") & 
+            ((df.get("is_52week_high", False) == True) | (df.get("is_alltime_high", False) == True))
+        ]
+        evidence["fomo_count"] = len(fomo_all)
+        evidence["fomo_entries"] = fomo_all.sort_values("entry_efficiency", ascending=False).head(5)[["symbol", "trade_date", "price"]].to_dict("records")
+
+        # 3. Revenge Clusters (Time-based proximity to losses)
+        revenge_trades = []
+        df_sorted = df.sort_values("trade_datetime")
+        for i in range(1, len(df_sorted)):
+            prev = df_sorted.iloc[i-1]
+            curr = df_sorted.iloc[i]
+            if prev["pnl"] < 0:
+                time_diff = (curr["trade_datetime"] - prev["trade_datetime"]).total_seconds() / 60
+                if 0 < time_diff < 30:
+                    evidence["revenge_count"] += 1
+                    if len(revenge_trades) < 5:
+                        revenge_trades.append({
+                            "symbol": curr["symbol"], 
+                            "time_since_last_loss_min": round(time_diff, 1),
+                            "result": "WIN" if curr["pnl"] > 0 else "LOSS", 
+                            "pnl": float(curr["pnl"])
+                        })
+        evidence["revenge_sequences"] = revenge_trades
+
+        # 4. Loss Averaging (Multiple buys at lower prices)
+        loss_avg_examples = []
+        buys = df[df["transaction_type"] == "BUY"]
+        if not buys.empty:
+            for (symbol, day), group in buys.groupby(["symbol", "trade_date"]):
+                if len(group) >= 2:
+                    group = group.sort_values("trade_datetime")
+                    # Final price lower than first implies adding to a losing position on the way down
+                    if group["price"].iloc[-1] < group["price"].iloc[0]:
+                        evidence["loss_averaging_count"] += 1
+                        if len(loss_avg_examples) < 5:
+                            loss_avg_examples.append({"symbol": symbol, "date": str(day), "adds": len(group)})
+        evidence["loss_averaging"] = loss_avg_examples
+
+        return evidence
+
+    def _compute_sectoral_analysis(self, df: pd.DataFrame) -> Dict:
+        """Analyze sector-level profitability and trading patterns with detailed metrics"""
+        if "industry" not in df.columns or df["industry"].dropna().empty:
+            return {}
+
+        sector_stats = []
+        # Group by mapped industry
+        for sector, group in df.groupby("industry"):
+            # A 'trade' is a row with non-zero pnl (FIFO matched)
+            traded_group = group[group["pnl"] != 0]
+            if traded_group.empty: continue
+            
+            pnl_sum = float(traded_group["pnl"].sum())
+            total_trades = len(traded_group)
+            
+            wins = traded_group[traded_group["pnl"] > 0]
+            losses = traded_group[traded_group["pnl"] < 0]
+            
+            win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
+            loss_rate = (len(losses) / total_trades * 100) if total_trades > 0 else 0
+            
+            max_pnl = float(traded_group["pnl"].max())
+            max_loss = float(traded_group["pnl"].min()) # Most negative value
+            
+            sector_stats.append({
+                "sector": sector,
+                "pnl": pnl_sum,
+                "win_rate": round(win_rate, 2),
+                "loss_rate": round(loss_rate, 2),
+                "max_pnl": max_pnl,
+                "max_loss": max_loss,
+                "trade_count": total_trades,
+                "avg_pnl": pnl_sum / total_trades if total_trades > 0 else 0
+            })
+
+        if not sector_stats: return {}
+
+        # Identify Top/Bottom sectors
+        sorted_stats = sorted(sector_stats, key=lambda x: x["pnl"])
+        
+        return {
+            "all_sectors": sorted_stats[::-1], # Best to worst
+            "money_maker": sorted_stats[-1]["sector"] if sorted_stats[-1]["pnl"] > 0 else None,
+            "money_leaker": sorted_stats[0]["sector"] if sorted_stats[0]["pnl"] < 0 else None,
+            "sector_count": len(sector_stats)
+        }
+
+    def _detect_option_strategy(self, df: pd.DataFrame) -> Dict:
+        """Detect whether trader is primarily an option writer or buyer and categorize activities"""
+        # Filter for options only
+        option_df = df[df["symbol"].str.contains("CE|PE", na=False)].copy()
+        if option_df.empty:
+            return {"type": "EQUITY_ONLY"}
+
+        # Logic for buyer vs writer: First transaction in a symbol determines intent
+        writer_signals = 0
+        buyer_signals = 0
+        
+        for symbol, group in option_df.groupby("symbol"):
+            first_trade = group.sort_values("trade_date").iloc[0]
+            if first_trade["transaction_type"] == "SELL":
+                writer_signals += 1
+            else:
+                buyer_signals += 1
+        
+        strategy_type = "OPTION_WRITER" if writer_signals > buyer_signals else "OPTION_BUYER"
+        
+        # Categorize by moneyness if possible (needs spot price)
+        # Using DB 'close' as proxy for spot if available
+        moneyness_stats = {"ATM": {"count": 0, "pnl": 0}, "OTM": {"count": 0, "pnl": 0}, "ITM": {"count": 0, "pnl": 0}}
+        
+        # Simple placeholder for moneyness until spot price logic is refined
+        return {
+            "strategy_type": strategy_type,
+            "writer_ratio": writer_signals / (writer_signals + buyer_signals) if (writer_signals+buyer_signals) > 0 else 0,
+            "option_trade_count": len(option_df),
+            "option_pnl": float(option_df["pnl"].sum()),
+            "moneyness_analysis": moneyness_stats
+        }
+
+    def _infer_trading_strategy(self, df: pd.DataFrame, metrics: Dict) -> Dict:
+        """Clusters trades and uses performance attributes to infer the underlying strategy"""
+        strategies = []
+        
+        # 1. Premium Selling (Option Writing)
+        opt_strat = metrics.get("option_strategy", {})
+        if opt_strat.get("strategy_type") == "OPTION_WRITER":
+            strategies.append({"name": "Premium Selling", "confidence": 0.9, "desc": "Income generation via theta decay"})
+
+        # 2. Scalping (Very short holds)
+        avg_hold = df["holding_period"].mean() if "holding_period" in df.columns else 0
+        if 0 < avg_hold < 30:
+            strategies.append({"name": "Scalping", "confidence": 0.8, "desc": "High-frequency, short-duration trades"})
+            
+        # 3. Momentum / Breakout
+        if metrics.get("avg_t_score", 0) > 70:
+            strategies.append({"name": "Momentum Chasing", "confidence": 0.7, "desc": "Entering stocks with strong technical trends"})
+
+        # 4. Mean Reversion 
+        # (Buying low proximity, Selling high proximity - works in ranges)
+        if metrics.get("timing_skill_score", 0) > 60 and metrics.get("avg_t_score", 0) < 50:
+            strategies.append({"name": "Mean Reversion", "confidence": 0.6, "desc": "Buying dips and selling peaks in ranges"})
+
+        return {
+            "detected_strategies": sorted(strategies, key=lambda x: x["confidence"], reverse=True),
+            "primary_strategy": strategies[0]["name"] if strategies else "Unclassified / Mixed"
+        }
+
+    def _simulate_what_if(self, df: pd.DataFrame) -> Dict:
+        """Simulate how performance would change with specific behavioral adjustments"""
+        baseline_pnl = df["pnl"].sum()
+        if len(df) == 0:
+            return {"baseline_pnl": 0, "rules": []}
+
+        # Filter to actual trades
+        traded_df = df[df["pnl"] != 0].copy()
+        
+        # 1. Simulation: "What if Max Loss was Capped at 3x Avg Loss?"
+        avg_loss = abs(traded_df[traded_df["pnl"] < 0]["pnl"].mean()) if not traded_df[traded_df["pnl"] < 0].empty else 1
+        cap = avg_loss * 3
+        sim_a_pnl = traded_df["pnl"].apply(lambda x: max(x, -cap) if x < 0 else x).sum()
+        delta_cap = sim_a_pnl - baseline_pnl
+        
+        # 2. Simulation: "Avoid Worst Trading Day"
+        df_tmp = df.copy()
+        df_tmp["day_name"] = df_tmp["trade_date"].dt.day_name()
+        day_pnl = df_tmp.groupby("day_name")["pnl"].sum()
+        worst_day = day_pnl.idxmin() if not day_pnl.empty else None
+        
+        delta_day = 0
+        if worst_day and day_pnl[worst_day] < 0:
+            sim_day_pnl = df_tmp[df_tmp["day_name"] != worst_day]["pnl"].sum()
+            delta_day = sim_day_pnl - baseline_pnl
+        else:
+            worst_day = "N/A"
+
+        # 3. Simulation: "Eliminate Revenge Trades"
+        # Revenge: Trade after a loss within a short window, often with larger size
+        df_s = df.copy().sort_values("trade_date")
+        df_s["prev_pnl"] = df_s["pnl"].shift(1)
+        # Identify losses followed by another loss (revenge sequence)
+        revenge_mask = (df_s["prev_pnl"] < 0) & (df_s["pnl"] < 0)
+        sim_revenge_pnl = df_s.loc[~revenge_mask, "pnl"].sum()
+        delta_revenge = sim_revenge_pnl - baseline_pnl
+
+        # 4. Simulation: "Avoid Low-Score Trades (Technical Discipline)"
+        if "total_score" in df.columns:
+            low_score_mask = df["total_score"] < 4  # Assuming 0-10 scale
+            sim_score_pnl = df.loc[~low_score_mask, "pnl"].sum()
+            delta_score = sim_score_pnl - baseline_pnl
+        else:
+            delta_score = 0
+
+        rules = []
+        if delta_cap > 0:
+            pct = (delta_cap / abs(baseline_pnl) * 100) if baseline_pnl != 0 else 0
+            rules.append({ "action": f"Cap losses at ₹{cap:,.0f} (3x Avg Loss)", "delta": float(delta_cap), "impact_pct": float(pct) })
+        
+        if delta_day > 0:
+            pct = (delta_day / abs(baseline_pnl) * 100) if baseline_pnl != 0 else 0
+            rules.append({ "action": f"Stop trading on {worst_day}s", "delta": float(delta_day), "impact_pct": float(pct) })
+            
+        if delta_revenge > 0:
+            pct = (delta_revenge / abs(baseline_pnl) * 100) if baseline_pnl != 0 else 0
+            rules.append({ "action": "Eliminate impulsive revenge trades", "delta": float(delta_revenge), "impact_pct": float(pct) })
+
+        if delta_score > 0:
+            pct = (delta_score / abs(baseline_pnl) * 100) if baseline_pnl != 0 else 0
+            rules.append({ "action": "Avoid low-probability (low score) setups", "delta": float(delta_score), "impact_pct": float(pct) })
+
+        # Sort by impact
+        rules = sorted(rules, key=lambda x: x["delta"], reverse=True)
+
+        return {
+            "baseline_pnl": float(baseline_pnl),
+            "cap_max_loss_pnl": float(sim_a_pnl),
+            "worst_day": worst_day,
+            "rules": rules[:4] # Top 4 impacts
+        }
+
+    def _mine_loss_patterns(self, df: pd.DataFrame) -> Dict:
+        """Identify toxic clusters (leaks) by correlating losses with time/day/context"""
+        if df.empty: return {}
+        
+        df = df.copy()
+        df["day_name"] = df["trade_date"].dt.day_name()
+        
+        # 1. Day-of-week leak
+        day_pnl = df.groupby("day_name")["pnl"].sum().sort_values()
+        toxic_day = day_pnl.index[0] if day_pnl.iloc[0] < 0 else None
+        
+        # 2. Time-of-day leak (First Hour vs Last Hour)
+        def time_bucket(hour):
+            if hour is None: return "Unknown"
+            if hour <= 10: return "Open/First Hour"
+            if hour >= 14: return "Close/Last Hour"
+            return "Mid-Day"
+            
+        if "trade_hour" in df.columns:
+            df["time_bucket"] = df["trade_hour"].apply(time_bucket)
+            time_pnl = df.groupby("time_bucket")["pnl"].sum().sort_values()
+            toxic_time = time_pnl.index[0] if time_pnl.iloc[0] < 0 else None
+        else:
+            toxic_time = None
+            
+        return {
+            "toxic_day": toxic_day,
+            "toxic_time": toxic_time,
+            "summary": f"Most losses occur on {toxic_day} during {toxic_time}" if toxic_day and toxic_time else "No specific temporal leaks found"
+        }
 
     # =========================================================
     # Core Metrics (unchanged)
@@ -456,10 +1184,12 @@ class TradingMetricsCalculator:
         return float(df['pnl'].sum())
 
     def calculate_win_rate(self, df: pd.DataFrame) -> float:
-        if len(df) == 0:
+        # Exclude pnl=0 rows (unmatched open legs) from win rate calculation
+        traded = df[df['pnl'] != 0]
+        if len(traded) == 0:
             return 0.0
-        winning_trades = len(df[df['pnl'] > 0])
-        return float(winning_trades / len(df) * 100)
+        winning_trades = len(traded[traded['pnl'] > 0])
+        return float(winning_trades / len(traded) * 100)
 
     def calculate_avg_win(self, df: pd.DataFrame) -> float:
         winning_trades = df[df['pnl'] > 0]['pnl']
@@ -468,6 +1198,90 @@ class TradingMetricsCalculator:
     def calculate_avg_loss(self, df: pd.DataFrame) -> float:
         losing_trades = df[df['pnl'] < 0]['pnl']
         return float(losing_trades.mean()) if len(losing_trades) > 0 else 0.0
+
+    def calculate_overall_win_rate(self, df: pd.DataFrame) -> float:
+        if len(df) == 0:
+            return 0.0
+        winning_trades = len(df[df['pnl'] > 0])
+        return float(winning_trades / len(df) * 100)
+
+    def calculate_avg_win_pct(self, df: pd.DataFrame) -> float:
+        winners = df[df['pnl'] > 0]
+        if winners.empty or "trade_value" not in winners.columns:
+            return 0.0
+        pcts = (winners['pnl'] / winners['trade_value'].abs() * 100).clip(-500, 500)
+        return float(pcts.mean())
+
+    def calculate_avg_loss_pct(self, df: pd.DataFrame) -> float:
+        losers = df[df['pnl'] < 0]
+        if losers.empty or "trade_value" not in losers.columns:
+            return 0.0
+        pcts = (losers['pnl'] / losers['trade_value'].abs() * 100).clip(-500, 500)
+        return float(pcts.mean())
+
+    def _compute_multivariate_pattern_analysis(self, df: pd.DataFrame) -> list:
+        # Identify the pattern of failures and wins based on combinations
+        temp_df = df.copy()
+        
+        for col in ["f_score", "t_score", "total_score"]:
+            if col in temp_df.columns:
+                mean_val = temp_df[col].mean()
+                temp_df[f"{col}_bucket"] = temp_df[col].apply(lambda x: "High" if pd.notna(x) and x > mean_val else "Low")
+            else:
+                temp_df[f"{col}_bucket"] = "N/A"
+                
+        for col in ["is_news", "is_event", "is_alltime_high", "is_high_volume"]:
+            if col not in temp_df.columns:
+                temp_df[col] = False
+                
+        group_cols = [
+            "f_score_bucket", "t_score_bucket", "total_score_bucket", 
+            "is_news", "is_alltime_high", "is_high_volume"
+        ]
+        
+        group_cols = [c for c in group_cols if c in temp_df.columns]
+        results = []
+        if not group_cols:
+            return results
+            
+        grouped = temp_df.groupby(group_cols)
+        
+        for name, group in grouped:
+            if len(group) < 3: 
+                continue
+            
+            pattern_parts = []
+            if not isinstance(name, tuple):
+                name = (name,)
+                
+            for i, col in enumerate(group_cols):
+                val = name[i]
+                if pd.isna(val) or val == "N/A": 
+                    continue
+                if isinstance(val, bool) or isinstance(val, np.bool_):
+                    if val:
+                        pattern_parts.append(col.replace("is_", "").replace("_", " ").upper())
+                else:
+                    pattern_parts.append(f"{val} {col.replace('_bucket', '').replace('_', ' ').title()}")
+            
+            pattern_name = " + ".join(pattern_parts) if pattern_parts else "Baseline (No Features)"
+            
+            win_count = len(group[group["pnl"] > 0])
+            total_count = len(group)
+            win_rate = (win_count / total_count * 100) if total_count > 0 else 0
+            avg_pnl = group["pnl"].mean()
+            
+            results.append({
+                "pattern": pattern_name,
+                "count": total_count,
+                "win_count": win_count,
+                "win_rate": round(win_rate, 2),
+                "avg_pnl_per_trade": round(avg_pnl, 2),
+                "total_pnl": round(group["pnl"].sum(), 2)
+            })
+            
+        results = sorted(results, key=lambda x: x["count"], reverse=True)
+        return results[:15]
 
     def calculate_profit_factor(self, df: pd.DataFrame) -> float:
         gross_profit = df[df['pnl'] > 0]['pnl'].sum()
@@ -545,7 +1359,7 @@ class TradingMetricsCalculator:
         return int(max_consec)
 
     def calculate_avg_holding_period(self, df: pd.DataFrame) -> float:
-        return float(df['holding_period_minutes'].mean()) if 'holding_period_minutes' in df.columns else 0.0
+        return float(df['holding_period'].mean()) if 'holding_period' in df.columns else 0.0
 
     def calculate_avg_trades_per_day(self, df: pd.DataFrame) -> float:
         days = df['trade_date'].dt.date.nunique()
@@ -575,7 +1389,7 @@ class TradingMetricsCalculator:
 
     def _calculate_holding_analytics(self, df: pd.DataFrame) -> Dict:
         """
-        Segment trades by holding period using 'holding_period_minutes' if available.
+        Segment trades by holding period using 'holding_period' if available.
         Buckets:
           - Scalp: < 30 mins
           - Intraday: 30 mins to < 1 day (1440 mins)
@@ -593,7 +1407,7 @@ class TradingMetricsCalculator:
         results = {}
 
         # 1. Check if column exists
-        col = "holding_period_minutes"
+        col = "holding_period"
         if col not in df.columns:
             # Try to calculate if missing but we have dates
             if "entry_time" in df.columns and "exit_time" in df.columns:
@@ -672,20 +1486,25 @@ class TradingMetricsCalculator:
 
         # Helper: get LTP / current price for each symbol
         def get_symbol_ltp(g: pd.DataFrame) -> float:
-            # Prefer explicit LTP/current_price if present
-            for col in g.columns:
-                if col.lower() in ("ltp", "current_price"):
-                    s = g.sort_values("trade_date")[col].dropna()
-                    if len(s) > 0:
-                        return float(s.iloc[-1])
+            # Prefer explicit 'price' from file (this is the premium for options, or last stock price)
+            if "price" in g.columns:
+                s = g.sort_values("trade_date")["price"].dropna()
+                if len(s) > 0:
+                    return float(s.iloc[-1])
             # Fallback to 'close' from DB
             if "close" in g.columns:
                 s = g.sort_values("trade_date")["close"].dropna()
                 if len(s) > 0:
                     return float(s.iloc[-1])
-            # Fallback to last trade price
-            s = g.sort_values("trade_date")["price"]
-            return float(s.iloc[-1])
+            return 0.0
+
+        def get_underlying_close(g: pd.DataFrame) -> float:
+            # This is the joined price from nse_stock_quotes based on __base_sym
+            if "close" in g.columns:
+                s = g.sort_values("trade_date")["close"].dropna()
+                if len(s) > 0:
+                    return float(s.iloc[-1])
+            return 0.0
 
         # Symbol-level aggregation
         group = df.groupby("symbol")
@@ -710,6 +1529,7 @@ class TradingMetricsCalculator:
             sell_price = float(sell_value / sell_qty) if sell_qty > 0 else 0.0
 
             ltp = get_symbol_ltp(g)
+            u_close = get_underlying_close(g)
 
             # Net qty = BUY - SELL
             net_qty = float(buy_qty - sell_qty)
@@ -737,6 +1557,7 @@ class TradingMetricsCalculator:
                 "buy_price": buy_price,
                 "sell_price": sell_price,
                 "ltp": ltp,
+                "underlying_close": u_close,
                 "buy_t_scores": buy_t_scores,
                 "buy_f_scores": buy_f_scores,
                 "sell_t_scores": sell_t_scores,
@@ -763,59 +1584,62 @@ class TradingMetricsCalculator:
             net_qty = row["net_qty"]
             pos_type = row["position_type"]
             ltp = row["ltp"]
-            # if len(symbol.split(' ') >2)
-            expiry_str = symbol.split(' ')[3]
-            strike = symbol.split(' ')[-1]
-            option_type = symbol.split(' ')[1]
+            
+            # Asset classification
+            asset_name, asset_kind = self.classify_instrument(symbol)
+            is_option = "OPTION" in asset_kind
+            
+            open_qty = abs(net_qty)
+            entry_price = row["buy_price"] if pos_type == "LONG-OPEN" else row["sell_price"]
+            invested = open_qty * entry_price
+            unreal = 0.0
 
-            # Convert string → date object
-            expiry_date = datetime.strptime(expiry_str, "%d%b%Y").date()
-
-            today_date = date.today()
-            if pos_type == "LONG-OPEN":
-                # Long open qty is net_qty > 0
-                open_qty = abs(net_qty)
-                entry_price = row["buy_price"]
-                invested = open_qty * entry_price
-                if today_date > expiry_date:
-                    if option_type == 'CE':
-                        if float(strike) > ltp:
-                            unreal = -1 * invested
+            if pos_type in ["LONG-OPEN", "SHORT-OPEN"]:
+                if is_option:
+                    try:
+                        pts = str(symbol).upper().replace(",", "").split()
+                        # Robust option parsing: EO CE SYMBOL DATE STRIKE
+                        opt_type = "CE" if "CE" in pts else ("PE" if "PE" in pts else "CE")
+                        strike = 0.0
+                        expiry_date = None
+                        
+                        for p in pts:
+                            # Try date: 28AUG2025
+                            if any(m in p for m in ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]):
+                                try:
+                                    expiry_date = datetime.strptime(p, "%d%b%Y").date()
+                                except: pass
+                            # Try strike
+                            p_cl = p.replace(',','')
+                            if p_cl.replace('.','',1).isdigit() and float(p_cl) > 100:
+                                strike = float(p_cl)
+                        
+                        today_date = date.today()
+                        u_ltp = row["underlying_close"]
+                        
+                        # If past expiry, compute intrinsic value
+                        if expiry_date and today_date > expiry_date and u_ltp > 0:
+                            if opt_type == 'CE':
+                                payoff = max(0.0, u_ltp - strike)
+                            else: # PE
+                                payoff = max(0.0, strike - u_ltp)
+                            
+                            if pos_type == "LONG-OPEN":
+                                unreal = (payoff * open_qty) - invested
+                            else: # SHORT-OPEN
+                                unreal = invested - (payoff * open_qty)
                         else:
-                            unreal = ((strike-ltp) * open_qty) - invested
-                    elif option_type == 'PE':
-                        if float(strike) < ltp:
-                            unreal = -1 * open_qty
-                        else:
-                            unreal = ((ltp-strike) * open_qty) - invested
-                    else:
-                        unreal = ((entry_price - ltp) * open_qty) - invested
+                            # Standard MTM using symbol Ltp (premium)
+                            if pos_type == "LONG-OPEN":
+                                unreal = (ltp - entry_price) * open_qty
+                            else: # SHORT-OPEN (Premium Recv - Current Premium cost to buy back)
+                                unreal = (entry_price - ltp) * open_qty
+                    except Exception as e:
+                        # Fallback
+                        unreal = (ltp - entry_price) * open_qty if pos_type == "LONG-OPEN" else (entry_price - ltp) * open_qty
                 else:
-                    # MTM pre-expiry
-                    unreal = (ltp - entry_price) * open_qty
-
-            elif pos_type == "SHORT-OPEN":
-                # Short open qty is |net_qty| (more SELL than BUY)
-                open_qty = abs(net_qty)
-                entry_price = row["sell_price"]
-                invested = open_qty * entry_price
-                if today_date > expiry_date:
-                    if option_type == 'CE':
-                        if float(strike) > float(ltp):
-                            unreal = invested
-                        else:
-                            unreal = invested - ((float(strike)-float(ltp)) * open_qty)
-                    elif option_type == 'PE':
-                        if float(strike) < float(ltp):
-                            unreal = invested
-                        else:
-                            unreal = invested - ((float(ltp)-float(strike)) * open_qty)
-                    else:
-                        unreal = (entry_price - float(ltp)) * open_qty
-                else:
-                    # 👉 MTM from LTP (short premium trade)
-                    unreal = (entry_price - ltp) * open_qty
-
+                    # EQUITY MTM: (Current Price - Entry) * Qty
+                    unreal = (ltp - entry_price) * open_qty if pos_type == "LONG-OPEN" else (entry_price - ltp) * open_qty
             else:
                 open_qty = 0
                 invested = 0.0
@@ -984,10 +1808,10 @@ class TradingMetricsCalculator:
             pct = (total_sym / denom * 100) if denom and denom > 0 else float("nan")
             sym_pct.append((symbol, pct))
 
-        gainer_pct = [p for (s, p) in sym_pct if s in gainers and p == p]
-        loser_pct = [p for (s, p) in sym_pct if s in losers and p == p]
+        gainer_pct = [min(500, p)  for (s, p) in sym_pct if s in gainers and p == p]
+        loser_pct  = [max(-500, p) for (s, p) in sym_pct if s in losers  and p == p]
         avg_gainer_pct = float(np.mean(gainer_pct)) if gainer_pct else 0.0
-        avg_loser_pct = float(np.mean(loser_pct)) if loser_pct else 0.0
+        avg_loser_pct  = float(np.mean(loser_pct))  if loser_pct  else 0.0
 
         # Close Pos Booked SL %: proportion of losing realized trades
         realized_trades = df[df["pnl"] != 0]
@@ -1095,19 +1919,57 @@ class TradingMetricsCalculator:
             }
         return out
 
-    def _build_pnl_timeline(self, csv_path: str) -> Dict[str, List]:
+    def _build_pnl_timeline(self, csv_path: str, nifty_data: Dict = None) -> Dict[str, List]:
         df = pd.read_csv(csv_path)
         self.pnl_df = df
-        df = df.rename(columns={'Date': 'trade_date', 'MTM': 'pnl'})
+        
+        # Robust column mapping
+        col_map = {c.lower(): c for c in df.columns}
+        date_col = next((col_map[k] for k in ['trade_date', 'date', 'trade date', 'timestamp'] if k in col_map), None)
+        pnl_col = next((col_map[k] for k in ['pnl', 'mtm', 'profit', 'realized_pnl'] if k in col_map), None)
+        
+        if not date_col or not pnl_col:
+            self.logger.warning(f"Could not identify Date or PnL column in {csv_path}. Columns: {list(df.columns)}")
+            return {'dates': [], 'values': [], 'nifty_values': []}
+
+        df = df.rename(columns={date_col: 'trade_date', pnl_col: 'pnl'})
         df['trade_date'] = pd.to_datetime(df['trade_date'])
         df = df.sort_values('trade_date')
+        self.pnl_df = df
+        
+        # Calculate daily pnl
         daily = df.groupby(df['trade_date'].dt.date)['pnl'].sum()
         cumulative = daily.cumsum()
-        self.last_pnl = df["pnl"].iloc[-1]
+        self.last_pnl = float(df["pnl"].iloc[-1]) if not df.empty else 0.0
         self.cumulative_pnl = float(cumulative.iloc[-1]) if len(cumulative) else 0.0
+        
+        # Build benchmark data if available
+        bench_values = []
+        bench_original_values = []
+        if nifty_data:
+            first_nifty = None
+            for d in cumulative.index:
+                d_str = str(d) # YYYY-MM-DD
+                val = nifty_data.get(d_str)
+                if val is not None:
+                    if first_nifty is None:
+                        first_nifty = val
+                    
+                    # 1. Scaled/Normalized (Existing behavior)
+                    norm_val = (val / first_nifty - 1) * max(abs(cumulative.max()), 100000)
+                    bench_values.append(float(norm_val))
+                    
+                    # 2. Original Scale (Requested)
+                    bench_original_values.append(float(val))
+                else:
+                    bench_values.append(bench_values[-1] if bench_values else 0.0)
+                    bench_original_values.append(bench_original_values[-1] if bench_original_values else 0.0)
+
         return {
             'dates': [str(d) for d in cumulative.index],
-            'values': [float(v) for v in cumulative.values]
+            'values': [float(v) for v in cumulative.values],
+            'benchmark_values': bench_values if bench_values else [],
+            'benchmark_original_values': bench_original_values if bench_original_values else []
         }
     # =========================================================
     # Persona Trait Analysis (unchanged)
@@ -1120,6 +1982,7 @@ class TradingMetricsCalculator:
             "discipline_score": self._calc_discipline_score(df),
             "emotional_control": self._calc_emotional_control(df),
             "risk_appetite": self._calc_risk_appetite(df),
+            "risk_handling": self._calc_risk_handling(df), # NEW: Handling skill
             "patience": self._calc_patience(df),
             "adaptability": self._calc_adaptability(df),
             "consistency": self._calc_consistency(df),
@@ -1134,6 +1997,50 @@ class TradingMetricsCalculator:
             "trait_summary": trait_summary,
             "persona_traits": traits
         }
+
+    def _calc_risk_handling(self, df: pd.DataFrame) -> float:
+        """Risk Handling = SKILL at managing risk (cutting losers, recovering from drawdowns).
+        Distinct from Risk Appetite (willingness to take risk).
+        """
+        losses = df[df['pnl'] < 0]
+        if losses.empty:
+            return 0.8
+
+        # 1. Loss cutting efficiency: avg loss vs max loss (lower ratio = better cutting)
+        max_loss = abs(losses['pnl'].min())
+        avg_loss = abs(losses['pnl'].mean())
+        loss_control = 1 - (avg_loss / max_loss) if max_loss > 0 else 0.5
+
+        # 2. Winner/loser holding ratio (good handlers cut losers faster than winners)
+        winners = df[df['pnl'] > 0]
+        if 'holding_period' in df.columns:
+            avg_hold_winners = winners['holding_period'].mean() if not winners.empty else 30
+            avg_hold_losers = losses['holding_period'].mean() if not losses.empty else 30
+            # Good handling: losers held shorter than winners → ratio > 1
+            hold_ratio = avg_hold_winners / (avg_hold_losers + 1e-6)
+            hold_skill = min(1.0, hold_ratio / 2.0)  # 2x ratio = perfect
+        else:
+            hold_skill = 0.5
+
+        # 3. Drawdown recovery: how quickly does the equity curve recover after dips?
+        pnl_cum = df['pnl'].cumsum()
+        peak = pnl_cum.expanding().max()
+        drawdowns = peak - pnl_cum
+        # Recovery speed: proportion of time in drawdown
+        in_dd = (drawdowns > 0).sum()
+        recovery_speed = 1.0 - (in_dd / (len(df) + 1e-6))
+
+        # 4. Profit factor as a skill indicator (separate from appetite)
+        pf = self.calculate_profit_factor(df)
+        reliability = min(1.0, pf / 2.0)
+
+        # Composite: weighted towards actual skill metrics
+        handling = (0.25 * loss_control +
+                    0.25 * hold_skill +
+                    0.20 * recovery_speed +
+                    0.30 * reliability)
+
+        return round(min(1.0, float(handling)), 2)
 
     # ---- trait helpers (unchanged from your version) ----
     def _calc_discipline_score(self, df: pd.DataFrame) -> float:
@@ -1155,19 +2062,49 @@ class TradingMetricsCalculator:
         return round(control, 2)
 
     def _calc_risk_appetite(self, df: pd.DataFrame) -> float:
-        max_dd = abs(df["pnl"].cumsum().min())
-        avg_trade_value = df["trade_value"].mean()
-        pnl_std = np.std(df["pnl"])
-        raw_score = (pnl_std + avg_trade_value * 0.001) / (max_dd + 1e-6)
-        return round(min(1.0, max(0.0, raw_score * 5)), 2)
+        """Risk Appetite = willingness to take risk.
+        Based on avg loss size, max single loss, and loss frequency.
+        NOT based on diversification (that's an investing metric, not trading).
+        """
+        losses = df[df['pnl'] < 0]
+        if losses.empty:
+            return 0.3  # No losses = conservatively low appetite
+
+        # 1. Avg loss relative to avg trade value (how much pain do they accept per trade?)
+        avg_loss = abs(losses['pnl'].mean())
+        avg_trade_val = df['trade_value'].mean()
+        loss_tolerance = avg_loss / (avg_trade_val + 1e-6)  # Higher = more risk appetite
+
+        # 2. Max single loss relative to avg loss (tail risk acceptance)
+        max_loss = abs(losses['pnl'].min())
+        tail_risk = max_loss / (avg_loss + 1e-6)  # Higher = accepts extreme losses
+        tail_score = min(1.0, tail_risk / 5.0)  # Normalize: 5x avg loss = max
+
+        # 3. Loss frequency (how often they're willing to lose)
+        traded = df[df['pnl'] != 0]
+        loss_freq = len(losses) / (len(traded) + 1e-6)
+
+        # 4. Position sizing on losers vs winners (do they size up on risky trades?)
+        winners = df[df['pnl'] > 0]
+        avg_qty_losers = losses['quantity'].mean() if not losses.empty else 0
+        avg_qty_winners = winners['quantity'].mean() if not winners.empty else 1
+        size_aggression = avg_qty_losers / (avg_qty_winners + 1e-6)
+
+        # Composite score: higher = more risk appetite
+        raw = (0.3 * loss_tolerance * 10 +  # Scale up for meaningful contribution
+               0.25 * tail_score +
+               0.25 * loss_freq +
+               0.2 * min(1.0, size_aggression))
+
+        return round(min(1.0, max(0.0, raw)), 2)
 
     def _calc_patience(self, df: pd.DataFrame) -> float:
-        if "holding_period_minutes" not in df.columns:
+        if "holding_period" not in df.columns:
             return 0.5
         pos_trades = df[df["pnl"] > 0]
         neg_trades = df[df["pnl"] < 0]
-        pos_hold = pos_trades["holding_period_minutes"].mean() if len(pos_trades) > 0 else 0
-        neg_hold = neg_trades["holding_period_minutes"].mean() if len(neg_trades) > 0 else 0
+        pos_hold = pos_trades["holding_period"].mean() if len(pos_trades) > 0 else 0
+        neg_hold = neg_trades["holding_period"].mean() if len(neg_trades) > 0 else 0
         patience_ratio = pos_hold / (neg_hold + 1)
         return round(min(1.0, patience_ratio / 2), 2)
 
