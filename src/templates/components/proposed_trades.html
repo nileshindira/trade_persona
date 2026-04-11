@@ -1,0 +1,103 @@
+<div class="col-12 mt-4" id="proposedTradesSection">
+    <div class="card border-0 shadow-sm metric-card"
+        style="background: linear-gradient(to bottom right, #ffffff, #f9fafb);">
+        <div class="card-header bg-transparent border-0 py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold d-flex align-items-center text-primary">
+                <i class="bi bi-stars me-2"></i>
+                Proposed & Strategic Trade Analysis
+            </h5>
+            <div class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                {{ report.appendix.proposed_trades|length }} Strategic Trades
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if report.appendix.proposed_trades %}
+            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0" id="proposedTradesTable"
+                    style="font-size: 0.78rem; white-space: nowrap;">
+                    <thead class="bg-light sticky-top shadow-sm" style="z-index: 10;">
+                        <tr>
+                            <th class="ps-4">Trade Date</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">PnL</th>
+                            <th class="text-center">Indira Verdict</th>
+                            <th class="bg-primary-subtle text-primary">Strategic Suggestion</th>
+                            <th>Sector Alternate</th>
+                            <th>RL Reasoning</th>
+                            <th>Market Context</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report.appendix.proposed_trades %}
+                        <tr
+                            class="{{ 'bg-success-subtle' if row.pnl > 1000 else ('bg-danger-subtle' if row.pnl < -1000 else '') }}">
+                            <td class="ps-4 text-muted small">{{ row.trade_date }}</td>
+                            <td><span class="fw-bold">{{ row.symbol }}</span></td>
+                            <td>
+                                <span
+                                    class="badge {{ 'bg-success text-white' if row.transaction_type == 'BUY' else 'bg-danger text-white' }}"
+                                    style="font-size: 0.65rem;">
+                                    {{ row.transaction_type }}
+                                </span>
+                            </td>
+                            <td class="text-end font-monospace">{{ row.quantity }}</td>
+                            <td class="text-end font-monospace">₹{{ '{:,.2f}'.format(row.price) }}</td>
+                            <td class="text-end font-monospace">₹{{ '{:,.0f}'.format(row.trade_value) }}</td>
+                            <td
+                                class="text-end fw-bold {{ 'text-success' if row.pnl > 0 else ('text-danger' if row.pnl < 0 else 'text-muted') }}">
+                                ₹{{ '{:,.0f}'.format(row.pnl) }}
+                            </td>
+                            <td class="text-center">
+                                {% if row.pnl > 5000 %}
+                                <span class="badge bg-success" title="High Impact Win"><i class="bi bi-trophy-fill"></i>
+                                    Major Win</span>
+                                {% elif row.pnl < -5000 %} <span class="badge bg-danger" title="Clean Stop Out"><i
+                                        class="bi bi-exclamation-triangle-fill"></i> Major Leak</span>
+                                    {% elif row.is_fomo %}
+                                    <span class="badge bg-warning text-dark" title="Impulse entry"><i
+                                            class="bi bi-lightning-fill"></i> FOMO</span>
+                                    {% elif row.is_revenge %}
+                                    <span class="badge bg-dark text-white" title="Emotional reaction"><i
+                                            class="bi bi-fire"></i> Revenge</span>
+                                    {% else %}
+                                    <span class="text-muted text-smallest">Analyzed</span>
+                                    {% endif %}
+                            </td>
+                            <td class="bg-primary-subtle fw-500" style="min-width: 250px; white-space: normal;">
+                                {{ row["Indira_suggestion on the stock"] or row["Indira Suggestion"] or "Standard
+                                alignment" }}
+                            </td>
+                            <td class="fw-bold text-primary" style="min-width: 150px;">
+                                {{ row["Any other stock in this sector , performed better"] or row["Sector Alternate"]
+                                or "-" }}
+                            </td>
+                            <td class="small" style="min-width: 250px; white-space: normal;">
+                                <div class="text-muted" style="line-height: 1.3;">{{ row.Rl_Reasoning or
+                                    row.RL_Reasoning or "Automated behavioral alignment check." }}</div>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <span class="badge bg-light text-dark border">{{ row["Day Marktet"] or "Neutral"
+                                        }}</span>
+                                    <span class="badge bg-light text-dark border">{{ row["Long Term Market (using ema0"]
+                                        or "N/A" }}</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-5 text-center text-muted border-top">
+                <i class="bi bi-file-earmark-bar-graph fs-1 d-block mb-3 opacity-25"></i>
+                No proposed trades found in the system registry. Run specific behavioral simulations to generate.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

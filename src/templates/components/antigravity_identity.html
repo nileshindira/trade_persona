@@ -1,0 +1,194 @@
+<!-- TRADER IDENTITY & DIAGNOSIS -->
+<section id="identity" class="page-section">
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center gap-3">
+            <div class="bg-primary text-white p-3 rounded-circle shadow-sm"
+                style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-robot fs-3"></i>
+            </div>
+            <div>
+                <h6 class="text-muted small mb-1 uppercase-tracking">Antigravity Identity Engine</h6>
+                <h2 class="section-title mb-0 fw-bold">{{ report.hero.persona_name }}</h2>
+            </div>
+        </div>
+        <div class="text-end">
+            <div
+                class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 p-2 px-3 rounded-pill">
+                <i class="bi bi-shield-check"></i> High-Agency Diagnostic
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. WHO AM I? -->
+    <div class="row g-4">
+        <div class="col-md-7">
+            <div class="card border-0 shadow-sm p-4 h-100 border-start border-primary border-5">
+                <h5 class="fw-bold mb-3">Diagnostic Verdict</h5>
+                <p class="lead mb-4 text-dark" style="font-size: 1.15rem; line-height: 1.6;">
+                    {{ report.diagnosis.narrative }}
+                </p>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="smallest text-muted text-uppercase tracking-widest d-block mb-1">Trader
+                            Type</label>
+                        <span class="fw-bold">{{ report.diagnosis.trader_type }}</span>
+                    </div>
+                    <div class="col-6">
+                        <label class="smallest text-muted text-uppercase tracking-widest d-block mb-1">Inferred
+                            Style</label>
+                        <span class="fw-bold">{{ report.diagnosis.inferred_style }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <div class="card border-0 shadow-sm p-4 h-100 bg-dark text-white">
+                <h5 class="fw-bold mb-4 text-primary"><i class="bi bi-activity"></i> Risk Profile</h5>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="smallest text-uppercase tracking-wider">Risk Appetite (Willingness)</span>
+                    </div>
+                    <div class="p-2 bg-secondary bg-opacity-25 rounded small">
+                        {{ report.diagnosis.risk_profile.appetite }}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="smallest text-uppercase tracking-wider">Risk Handling (Skill)</span>
+                    </div>
+                    <div class="p-2 bg-primary bg-opacity-25 rounded small border-start border-primary border-3">
+                        {{ report.diagnosis.risk_profile.handling }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2 & 3. STRENGTHS & MISTAKES -->
+    <div class="row g-4 mt-2">
+        <!-- Where am I Good? -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm p-4 h-100 border-top border-success border-4">
+                <h5 class="fw-bold mb-4 text-success d-flex align-items-center gap-2">
+                    <i class="bi bi-graph-up-arrow"></i> Where I am Good
+                </h5>
+                {% for strength in report.strengths %}
+                <div class="mb-4 last-child-no-margin">
+                    <div class="fw-bold text-dark mb-1">{{ strength.title }}</div>
+                    <p class="smallest text-muted mb-2">{{ strength.why_it_works }}</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span
+                            class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 smallest">
+                            Evidence: {{ strength.evidence }}
+                        </span>
+                        {% if strength.sectors %}
+                        <span class="badge bg-light text-muted border smallest">
+                            Sectors: {{ strength.sectors }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Where I go Wrong? -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm p-4 h-100 border-top border-danger border-4">
+                <h5 class="fw-bold mb-4 text-danger d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle"></i> Where I go Wrong
+                </h5>
+                {% for mistake in report.mistakes %}
+                <div class="mb-4 last-child-no-margin">
+                    <div class="fw-bold text-dark mb-1">{{ mistake.title }}</div>
+                    <p class="smallest text-muted mb-2">{{ mistake.pattern }}</p>
+                    <div class="p-2 bg-light rounded smallest border-start border-success border-3 mb-2">
+                        <span class="text-success fw-bold">TRANSFORMATION:</span> {{ mistake.correction }}
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span
+                            class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 smallest">
+                            Leak: {{ mistake.evidence }}
+                        </span>
+                        {% if mistake.leakage_sectors %}
+                        <span class="badge bg-light text-muted border smallest">
+                            At-Risk: {{ mistake.leakage_sectors }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. IMPROVEMENT ROADMAP & SIMULATION -->
+    <div class="mt-4">
+        <div class="card border-0 shadow-lg p-0 overflow-hidden rounded-4">
+            <div class="row g-0">
+                <div class="col-md-4 bg-primary text-white p-4 d-flex flex-column justify-content-center">
+                    <h4 class="fw-bold mb-2">The Transformation Hook</h4>
+                    <p class="mb-0 opacity-75 lead">{{ report.improvement_plan.biggest_lever }}</p>
+                    <div class="mt-4 p-3 bg-white bg-opacity-10 rounded border border-white border-opacity-10">
+                        <div class="smallest text-uppercase tracking-widest opacity-50 mb-2">Simulated Outcome</div>
+                        {% for sim in report.transformation %}
+                        <div class="fw-bold small mb-1">{{ sim.adjustment }}</div>
+                        <div class="text-warning fw-bold mb-0">{{ sim.projected_benefit }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-8 p-4 bg-white">
+                    <h5 class="fw-bold mb-4"><i class="bi bi-map"></i> Improvement Roadmap</h5>
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <h6 class="smallest text-muted text-uppercase mb-3 tracking-widest">Immediate (Next 5
+                                Sessions)</h6>
+                            <ul class="list-unstyled mb-0">
+                                {% for item in report.improvement_plan.next_5_sessions %}
+                                <li class="d-flex gap-2 small mb-2 text-dark">
+                                    <i class="bi bi-check-circle-fill text-primary"></i> {{ item }}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="smallest text-muted text-uppercase mb-3 tracking-widest">Structural (Next 30
+                                Days)</h6>
+                            <ul class="list-unstyled mb-0">
+                                {% for item in report.improvement_plan.next_30_days %}
+                                <li class="d-flex gap-2 small mb-2 text-dark">
+                                    <i class="bi bi-arrow-right-circle text-muted"></i> {{ item }}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5 text-center">
+        <div class="d-inline-flex align-items-center gap-3 p-3 px-5 bg-white shadow-sm border rounded-pill">
+            <span class="smallest text-muted tracking-widest text-uppercase">Final Verdict</span>
+            <div class="vr"></div>
+            <span class="fw-bold text-dark italic">"{{ report.final_verdict or report.one_liner }}"</span>
+        </div>
+    </div>
+</section>
+
+<style>
+    .last-child-no-margin:last-child {
+        margin-bottom: 0 !important;
+    }
+
+    .bg-dark {
+        background-color: #0c0e14 !important;
+    }
+
+    .text-warning {
+        color: #ffc107 !important;
+    }
+</style>

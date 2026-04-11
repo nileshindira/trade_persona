@@ -1,0 +1,206 @@
+/* =====================================================
+   ANTIGRAVITY — Bootstrap 5 Override Rules
+   Applied AFTER bootstrap.min.css and theme.css
+   ===================================================== */
+
+/* ─── CORE BOOTSTRAP OVERRIDES ─────────────────────── */
+
+/* Card */
+.card {
+    border: 1px solid var(--ag-border-light);
+    border-radius: var(--ag-radius);
+    box-shadow: var(--ag-shadow);
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+/* Badge */
+.badge {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    font-size: 0.72rem;
+}
+
+/* Buttons */
+.btn-primary {
+    background: var(--ag-primary);
+    border-color: var(--ag-primary);
+}
+
+.btn-primary:hover {
+    background: var(--ag-primary-dark);
+    border-color: var(--ag-primary-dark);
+}
+
+/* Table */
+.table {
+    color: var(--ag-text);
+}
+
+.table-light {
+    background: var(--ag-card-alt);
+}
+
+.table-sm td,
+.table-sm th {
+    padding: 0.5rem 0.75rem;
+}
+
+/* Progress bar */
+.progress {
+    border-radius: 99px;
+    background: var(--ag-card-alt);
+}
+
+.progress-bar {
+    border-radius: 99px;
+}
+
+.progress-bar.bg-primary {
+    background: var(--ag-primary) !important;
+}
+
+/* Nav pills */
+.nav-pills .nav-link {
+    border-radius: 99px;
+    font-weight: 600;
+}
+
+.nav-pills .nav-link.active {
+    background: var(--ag-primary);
+}
+
+/* Tooltips */
+.tooltip-inner {
+    background: var(--ag-text);
+    font-size: 0.75rem;
+    border-radius: var(--ag-radius-xs);
+}
+
+.bs-tooltip-auto[data-popper-placement^=top] .tooltip-arrow::before,
+.bs-tooltip-top .tooltip-arrow::before {
+    border-top-color: var(--ag-text);
+}
+
+/* Form controls */
+.form-control,
+.form-select {
+    border-color: var(--ag-border);
+    border-radius: var(--ag-radius-sm);
+    color: var(--ag-text);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--ag-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+/* Alert overrides */
+.alert {
+    border-radius: var(--ag-radius-sm);
+    border: none;
+}
+
+.alert-success {
+    background: var(--ag-success-light);
+    color: #065f46;
+}
+
+.alert-danger {
+    background: var(--ag-danger-light);
+    color: #991b1b;
+}
+
+.alert-warning {
+    background: var(--ag-warning-light);
+    color: #92400e;
+}
+
+/* Text color helpers aligned to AG tokens */
+.text-success {
+    color: var(--ag-success) !important;
+}
+
+.text-danger {
+    color: var(--ag-danger) !important;
+}
+
+.text-warning {
+    color: var(--ag-warning) !important;
+}
+
+.text-primary {
+    color: var(--ag-primary) !important;
+}
+
+.text-muted {
+    color: var(--ag-text-muted) !important;
+}
+
+/* Background color helpers */
+.bg-success {
+    background-color: var(--ag-success) !important;
+}
+
+.bg-danger {
+    background-color: var(--ag-danger) !important;
+}
+
+.bg-primary {
+    background-color: var(--ag-primary) !important;
+}
+
+.bg-warning {
+    background-color: var(--ag-warning) !important;
+}
+
+/* Soft bg variants */
+.bg-success.bg-opacity-10 {
+    background-color: var(--ag-success-light) !important;
+}
+
+.bg-danger.bg-opacity-10 {
+    background-color: var(--ag-danger-light) !important;
+}
+
+.bg-primary.bg-opacity-10 {
+    background-color: var(--ag-primary-light) !important;
+}
+
+.bg-warning.bg-opacity-10 {
+    background-color: var(--ag-warning-light) !important;
+}
+
+/* border color fixes */
+.border-success {
+    border-color: var(--ag-success) !important;
+}
+
+.border-danger {
+    border-color: var(--ag-danger) !important;
+}
+
+.border-primary {
+    border-color: var(--ag-primary) !important;
+}
+
+/* Rounded pill */
+.rounded-pill {
+    border-radius: 99px !important;
+}
+
+.rounded-4 {
+    border-radius: 1rem !important;
+}
+
+.rounded-5 {
+    border-radius: 1.5rem !important;
+}
+
+/* Container */
+.container-xl {
+    max-width: 1400px;
+}

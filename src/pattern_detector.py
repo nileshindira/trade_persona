@@ -37,19 +37,43 @@ class TradingPatternDetector:
         patterns['anchor_bias'] = self.detect_anchor_bias(df)
         patterns['loss_averaging'] = self.detect_loss_averaging(df)
         patterns['intraday_vs_overnight'] = self.detect_intraday_vs_overnight_risk(df)
+        patterns['absence_of_stop_loss'] = self.detect_absence_of_stop_loss(df)
 
         return patterns
+
+    def detect_absence_of_stop_loss(self, df: pd.DataFrame) -> Dict:
+        """Detect trades where no stop loss was apparently used (deep drawdowns held)"""
+        if 'max_drawdown_on_trade' not in df.columns:
+            return {'detected': False}
+        
+        # Consider absence of stop loss if max drawdown > 2.5% or loss > 3x average loss
+        avg_loss = abs(df[df['pnl'] < 0]['pnl'].mean()) if not df[df['pnl'] < 0].empty else 1000
+        
+        def is_asl(row):
+            # Parse drawdown string if it's like "-2.5%"
+            try:
+                dd_val = float(str(row['max_drawdown_on_trade']).replace('%', ''))
+            except:
+                dd_val = 0
+            
+            if dd_val < -2.5: return True
+            if row['pnl'] < -3 * avg_loss: return True
+            return False
+
+        asl_trades = df[df.apply(is_asl, axis=1)].index.tolist()
+        
+        return {
+            'detected': len(asl_trades) > 0,
+            'count': len(asl_trades),
+            'trades': asl_trades,
+            'description': 'Trades held through deep drawdowns without predefined exit triggers'
+        }
+
     # ---------- 🧠 BEHAVIORAL PATTERN DETECTIONS ----------
 
     def detect_fomo_trading(self, df: pd.DataFrame) -> Dict:
         """
         FOMO = Entering after an EXTENDED CONTINUOUS MOVE with speed and no consolidation.
-        
-        Detection logic:
-        1. Detect extended bull/bear runs: >3 consecutive same-direction days OR >5% move in <3 sessions
-        2. Check if there was NO consolidation (no range compression) before entry
-        3. Check if entry was at the TAIL END of the move (price far from moving average)
-        4. Cross-reference with trader's entry timing — late entries into fast moves = FOMO
         """
         if not {'open', 'close', 'high', 'low', 'trade_date'}.issubset(df.columns):
             return {'detected': False}
@@ -74,7 +98,7 @@ class TradingPatternDetector:
             run_direction = None
             cum_move = 0.0
             
-            for idx, (_, row) in enumerate(sym_df.iterrows()):
+            for idx, (orig_idx, row) in enumerate(sym_df.iterrows()):
                 current_dir = 'up' if row['daily_return'] > 0 else 'down'
                 
                 if current_dir == run_direction:
@@ -89,21 +113,18 @@ class TradingPatternDetector:
                 is_extended_run = run_count >= 3
                 is_fast_move = cum_move > 0.05  # >5% cumulative move
                 
-                # Check if this row is a BUY entry during a bullish run (or SELL during bearish)
                 is_buy = row['transaction_type'] == 'BUY'
                 is_sell = row['transaction_type'] in ('SALE', 'SELL')
                 
                 if is_extended_run or is_fast_move:
-                    # FOMO = buying into a bullish extended run OR selling into bearish panic
                     if (is_buy and run_direction == 'up') or (is_sell and run_direction == 'down'):
-                        # Check no consolidation: high-low range is expanding not contracting
                         recent = sym_df.iloc[max(0, idx-3):idx+1]
                         if len(recent) >= 2:
                             ranges = (recent['high'] - recent['low']) / (recent['open'] + 1e-6)
                             range_expanding = ranges.is_monotonic_increasing or ranges.iloc[-1] > ranges.mean()
                             
-                            if range_expanding:  # No consolidation = FOMO signal
-                                fomo_trades.append(row.name)
+                            if range_expanding:
+                                fomo_trades.append(orig_idx) # Use original index
                                 if len(fomo_examples) < 5:
                                     fomo_examples.append({
                                         'symbol': symbol,
@@ -118,12 +139,14 @@ class TradingPatternDetector:
         total_buys = len(df[df['transaction_type'] == 'BUY'])
         
         return {
-            'detected': fomo_count > max(3, self.min_trades * 0.1),
-            'fomo_trades': fomo_count,
+            'detected': fomo_count > 0,
+            'fomo_count': fomo_count,
+            'trades': fomo_trades, # Return indices
             'percentage': float(fomo_count / total_buys * 100) if total_buys > 0 else 0,
             'examples': fomo_examples,
             'description': 'Entries made during extended, fast-moving runs without consolidation'
         }
+
 
     def detect_anchor_bias(self, df: pd.DataFrame) -> Dict:
         """
@@ -194,15 +217,10 @@ class TradingPatternDetector:
     def detect_loss_averaging(self, df: pd.DataFrame) -> Dict:
         """
         Loss Averaging = Buying more of a losing position at declining prices.
-        
-        Detection:
-        1. Same-day: multiple buys at declining prices for the same symbol
-        2. Cross-day: buying same symbol over multiple days at lower prices
-        3. Quantity escalation: each subsequent buy is larger (doubling down)
-        Track outcome: did averaging pay off or compound the loss?
         """
         df = df.copy().sort_values('trade_date')
         averaging_events = []
+        averaging_trades = []
         paid_off = 0
         compounded = 0
         
@@ -211,24 +229,22 @@ class TradingPatternDetector:
             if len(buys) < 2:
                 continue
             
-            # Look for sequences of declining buy prices
             i = 0
             while i < len(buys) - 1:
                 sequence = [buys.iloc[i]]
+                seq_indices = [buys.index[i]]
                 j = i + 1
                 while j < len(buys) and buys.iloc[j]['price'] < buys.iloc[j-1]['price']:
                     sequence.append(buys.iloc[j])
+                    seq_indices.append(buys.index[j])
                     j += 1
                 
                 if len(sequence) >= 2:
-                    # Check for quantity escalation (doubling down signal)
+                    averaging_trades.extend(seq_indices)
                     qty_escalation = sequence[-1]['quantity'] > sequence[0]['quantity']
-                    
-                    # Check outcome: was there a sell after averaging?
                     last_avg_date = sequence[-1]['trade_date']
                     sells_after = sym_df[(sym_df['transaction_type'].isin(['SALE', 'SELL'])) & 
                                         (sym_df['trade_date'] > last_avg_date)]
-                    
                     avg_buy_price = sum(s['price'] * s['quantity'] for s in sequence) / sum(s['quantity'] for s in sequence)
                     
                     if not sells_after.empty:
@@ -242,7 +258,6 @@ class TradingPatternDetector:
                         outcome = 'still_open'
                     
                     total_capital = sum(s['price'] * s['quantity'] for s in sequence)
-                    
                     averaging_events.append({
                         'symbol': symbol,
                         'num_buys': len(sequence),
@@ -252,18 +267,19 @@ class TradingPatternDetector:
                         'outcome': outcome,
                         'avg_buy_price': round(avg_buy_price, 2),
                     })
-                
                 i = j
         
         return {
-            'detected': len(averaging_events) > 2,
+            'detected': len(averaging_events) > 0,
             'events_count': len(averaging_events),
+            'trades': averaging_trades,
             'paid_off_count': paid_off,
             'compounded_count': compounded,
-            'events': averaging_events[:10],  # Top 10 for report
+            'events': averaging_events[:10],
             'description': 'Buying more of a losing position at declining prices',
             'success_rate': round(paid_off / (paid_off + compounded) * 100, 1) if (paid_off + compounded) > 0 else 0,
         }
+
 
     def detect_intraday_vs_overnight_risk(self, df: pd.DataFrame) -> Dict:
         """
@@ -389,46 +405,57 @@ class TradingPatternDetector:
             'percentage': float(weekend_holds / len(df) * 100) if len(df) > 0 else 0
         }
     def detect_overtrading(self, df: pd.DataFrame) -> Dict:
-        """Detect overtrading behavior"""
-        daily_trades = df.groupby(df['trade_date'].dt.date).size()
+        """
+        Detect overtrading behavior based on quality and volume.
+        """
+        if df.empty: return {'detected': False}
+        daily_stats = df.groupby(df['trade_date'].dt.date).agg({
+            'pnl': 'sum',
+            'symbol': 'count'
+        }).rename(columns={'symbol': 'trade_count', 'pnl': 'daily_pnl'})
         
-        # Thresholds
-        excessive_threshold = 10  # More than 10 trades/day
+        global_avg_trades = daily_stats['trade_count'].mean()
+        total_trades = daily_stats['trade_count'].sum()
+        global_avg_pnl_per_trade = df['pnl'].sum() / total_trades if total_trades > 0 else 0
         
-        overtrading_days = (daily_trades > excessive_threshold).sum()
-        total_days = len(daily_trades)
+        daily_stats['is_overtrading'] = (
+            (daily_stats['trade_count'] > 1.3 * global_avg_trades) & 
+            (daily_stats['daily_pnl'] < global_avg_pnl_per_trade * daily_stats['trade_count'])
+        )
+        
+        overtrading_days = daily_stats[daily_stats['is_overtrading']].index.tolist()
+        overtrading_trades = df[df['trade_date'].dt.date.isin(overtrading_days)].index.tolist()
         
         return {
-            'detected': overtrading_days > total_days * 0.3,
-            'overtrading_days': int(overtrading_days),
-            'avg_trades_per_day': float(daily_trades.mean()),
-            'max_trades_per_day': int(daily_trades.max()),
-            'severity': 'HIGH' if overtrading_days > total_days * 0.5 else 'MEDIUM' if overtrading_days > total_days * 0.3 else 'LOW'
+            'detected': len(overtrading_days) > 0,
+            'overtrading_days': len(overtrading_days),
+            'trades': overtrading_trades,
+            'avg_trades_per_day': float(global_avg_trades),
+            'severity': 'HIGH' if len(overtrading_days) > len(daily_stats) * 0.3 else 'MEDIUM' if len(overtrading_days) > 0 else 'LOW',
+            'description': 'Trading volume significantly above your average with sub-par performance output.'
         }
     
     def detect_revenge_trading(self, df: pd.DataFrame) -> Dict:
         """Detect revenge trading (trading after losses)"""
         df_sorted = df.sort_values('trade_date')
-        
-        revenge_trades = 0
+        revenge_trades_indices = []
         
         for i in range(1, len(df_sorted)):
             prev_trade = df_sorted.iloc[i-1]
             curr_trade = df_sorted.iloc[i]
-            
-            # Check if current trade is within 30 minutes of previous loss
             time_diff = (curr_trade['trade_date'] - prev_trade['trade_date']).total_seconds() / 60
             
             if prev_trade['pnl'] < 0 and time_diff < 30:
-                # Check if trade size increased
-                if curr_trade['quantity'] > prev_trade['quantity']:
-                    revenge_trades += 1
+                if curr_trade['quantity'] > prev_trade['quantity'] or abs(curr_trade['pnl']) > abs(prev_trade['pnl'] * 1.5):
+                    revenge_trades_indices.append(curr_trade.name)
         
         return {
-            'detected': revenge_trades > self.min_trades,
-            'count': int(revenge_trades),
-            'percentage': float(revenge_trades / len(df) * 100) if len(df) > 0 else 0
+            'detected': len(revenge_trades_indices) > 0,
+            'count': len(revenge_trades_indices),
+            'trades': revenge_trades_indices,
+            'percentage': float(len(revenge_trades_indices) / len(df) * 100) if len(df) > 0 else 0
         }
+
     
     def detect_pyramiding(self, df: pd.DataFrame) -> Dict:
         """Detect pyramiding (adding to positions)"""

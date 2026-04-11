@@ -1,0 +1,70 @@
+{
+  "chunk_id": "chunk_3",
+  "forensic_summary": "This chunk reveals a high-velocity, momentum-aligned swing trader operating predominantly in Extreme Bullish market regimes, with a clear preference for scoring-confirmed setups (most entries carry total_score 62-92, f_score=1.0). The trader executes entries via order fragmentation—single logical positions split across 5-20 child fills within seconds—indicating algorithmic or semi-algorithmic order routing rather than discretionary click trading. Three critical behavioral anomalies surface: (1) A parallel track of unscored trades (HINDMOTORS, null-symbol buys on 2025-06-18) running alongside scored trades, suggesting a shadow book operating outside the scoring framework—a structural discipline breach. (2) The IEX sequence on 2025-06-11 shows a SALE at 189.0 followed 12 minutes later by a BUY at 191.0-192.71, a classic short-cover-and-reload under negative t_score (-1.4) and f_score=0.0, meaning the system explicitly flagged this as a bad trade and the trader executed it anyway, then doubled down. (3) ZENTEC entry at t_score=-0.29, f_score=0.0 on 2025-06-23 represents another deliberate override of a negative-signal setup. The HINDMOTORS exit sequence is the most forensically damning: bought 1000 shares at 35.78 on 2025-05-29 with no score, then liquidated in 25+ fragmented sells between 31.50-31.93 on 2025-06-04—a disorderly panic exit at a clear loss, sliced across 40-minute window with escalating lot sizes (40 → 400 → 800 aggregate), confirming escalating urgency and loss-aversion-driven drip-selling. RPOWER shows the opposite: bought 250 at 54.34 (score 80.5), sold profitably at 59.45, then re-bought at 66.75 in June and continued partial exits—textbook momentum pyramiding with score discipline. APOLLO is re-entered three times across the chunk (June 2, June 4, June 23, June 24) at varying t_scores (2.14 to 0.93), suggesting position-building conviction but also averaging-in behavior as t_score degrades. OLAELEC sold into Bearish market_behaviour with total_score 35.5 and 23.0—two below-threshold dumps consistent with systematic inventory clearing rather than conviction shorts.",
+  "execution_quality": {
+    "timing": "6",
+    "sizing": "5",
+    "notes": "Timing is competent on scored setups—RPOWER, NACLIND, JPPOWER, PCJEWELLER, BAJAJINDEF all demonstrate intraday entry precision with immediate fragmentation fills confirming liquidity management. However, timing collapses on loss exits: HINDMOTORS drip-sold over 25 minutes across 15:05-15:26 window, leaking value at each step (31.93 → 31.50). Sizing is the primary defect: no visible position-size-to-score correlation. JPPOWER receives 40,000+ units at score 70.0 while GRSE gets only 251 units at score 92.0—the highest-conviction setup in the entire chunk is allocated the least size. CAMLINFINE is re-entered at 269 (June 9) after being exited at 251 (June 5) at a loss, with 5x the original quantity (1,054 vs 701 units), a size escalation on a deteriorating PnL position. The null-symbol buys at ~25 INR on 2025-06-18 (9,807 total units, no score) represent a complete sizing framework abandonment."
+  },
+  "behavioral_signals": [
+    {
+      "signal": "Systematic scoring framework override on negative-signal entries",
+      "evidence": "IEX BUY on 2025-06-11 13:35-13:38 at 191.0-192.71 executed with t_score=-1.4, f_score=0.0 (total 1,232 units across 5 fills). ZENTEC BUY on 2025-06-23 at 1994.6 with t_score=-0.29, f_score=0.0 (217 units). Both are explicit system-red trades executed in size, indicating the trader treats negative scores as suggestions rather than hard stops.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Disorderly loss exit / panic drip-selling",
+      "evidence": "HINDMOTORS: 1000 shares bought 2025-05-29 at 35.78 (no score). Exit fragmented across 25+ sells on 2025-06-04 from 15:05:53 to 15:26:05, prices sliding 31.93 → 31.50, with lot sizes escalating from 40 to 400 per fill near the end, indicating urgency increase as price deteriorated. Total exit duration ~20 minutes, no clean single-decision exit.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Shadow book / unscored parallel trading",
+      "evidence": "HINDMOTORS (2025-05-29 buy, 2025-06-04 sells), null-symbol buys on 2025-06-18 (9,807 units across 8 fills at 24.64-25.34), null-symbol sells on 2025-06-19 (766 units at 25.60), OSWALPUMPS buys 2025-06-25 (110 units, null total_score), ELLEN buys 2025-07-01 (236 units, null total_score). All carry null or zero scores. These represent a structurally separate trading activity bypassing the scoring system entirely.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Inverse position-sizing relative to signal conviction",
+      "evidence": "GRSE scored 92.0 (highest in chunk) received only ~254 units across June 4 and 251 units across June 23 additions. JPPOWER scored 70.0 received 40,000+ units on 2025-07-07. ACMESOLAR scored 81.5 received 483 units. No monotonic relationship between score and size is detectable; largest positions concentrated in lower-score names.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Re-entry size escalation after prior loss on same symbol",
+      "evidence": "CAMLINFINE: Initial buy 381 units at 254.0 on 2025-06-04, sold 701 units on 2025-06-05 at 251.0 (below cost = loss). Re-entered 2025-06-09 with 1,054 units at ~269.59-269.82 (higher price, larger size). This is averaging-up-after-loss behavior combined with size escalation, not a fresh setup re-entry.",
+      "confidence": "MEDIUM",
+      "impact": "Medium"
+    },
+    {
+      "signal": "Momentum chasing on high-volume event-day setups with rapid same-day reversal",
+      "evidence": "JPPOWER: Bought ~44,871 units on 2025-07-07 at 22.74 (EoD), sold 5,666 units at 23.19-23.49 at market open 2025-07-08—a less-than-18-hour hold. PCJEWELLER: Bought 10 units on 2025-07-04, sold 15,727 units on 2025-07-07 within 3 minutes of open at 17.90-17.95. These confirm an overnight momentum capture pattern triggered by event-day volume signals.",
+      "confidence": "HIGH",
+      "impact": "Medium"
+    },
+    {
+      "signal": "Profitable exits below score threshold / low-conviction sells into strength",
+      "evidence": "KPIGREEN sold at score 57.38, t_score=0.25 on 2025-06-16. WEBELSOLAR sold at score 33.75, t_score=-0.01, f_score=0.0 on 2025-06-30. OLAELEC sold at score 35.5 and 23.0 in Bearish regime. Consistent pattern of below-threshold exits, suggesting the trader uses the score to enter but not to calibrate exit timing.",
+      "confidence": "MEDIUM",
+      "impact": "Medium"
+    },
+    {
+      "signal": "Rapid multi-symbol position opening on single session without capacity management",
+      "evidence": "2025-06-04: APOLLO (1,587 units), GRSE (324 units), CAMLINFINE (381 units), IRCON (250 units), HINDMOTORS exit, RAILTEL exit—all within single session. 2025-07-01: BAJAJINDEF (3,000 units), NACLIND (340 units), ELLEN (236 units) opened simultaneously. Concentrated session activity across 3-6 uncorrelated names without observable capital allocation framework.",
+      "confidence": "MEDIUM",
+      "impact": "Medium"
+    }
+  ],
+  "risk_flags": [
+    "9,807 units purchased in null-symbol, unscored trades on 2025-06-18 representing complete bypass of the scoring framework—no risk parameter available for assessment",
+    "IEX position built at t_score=-1.4, f_score=0.0: system explicitly contra-indicated this trade; execution proceeded regardless at 1,232 units",
+    "HINDMOTORS loss exit took 20 minutes and 25+ fragmented fills with accelerating lot sizes, indicating loss-aversion paralysis converting a clean stop-out into a drawn-out bleed",
+    "JPPOWER position of ~44,871 units at 22.74 represents outsized nominal exposure relative to other positions in this chunk; single-name concentration risk at a low-unit-price high-volume stock",
+    "ZENTEC entered with negative t_score and f_score=0.0—second confirmed override of a system-flagged negative setup in this chunk",
+    "APOLLO re-entered four times across the chunk with declining t_scores (2.14 → 1.79 → 1.65 → 0.93), with a net-loss partial exit on 2025-06-25 at 198.40 vs. entries at 201.97-214.0, suggesting position-averaging masking an underwater book",
+    "OLAELEC sold across three sessions (2025-07-14, 07-15) with total_score 35.5 and 23.0 in Bearish market regime—below any reasonable quality threshold, indicating these units were held from a prior period and liquidated under duress",
+    "Null-symbol trades on 2025-06-18 and 2025-06-19 suggest data integrity or instrument identification issue in record-keeping, which itself is an operational risk signal"
+  ],
+  "operating_style_hint": "Opportunistic Event-Momentum Swing Trader with a Dual-Track Architecture: the primary book is disciplined, scoring-guided, and momentum-aligned—hunting Extreme Bullish setups, entering at open or intraday on high-volume event triggers, and exiting within hours to days. The secondary book is unscored, discretionary, and reactive—likely driven by tips, conviction trades, or legacy positions (HINDMOTORS, null-symbol). The trader's core strength is pattern recognition in scored setups and execution speed via fragmented fills. The critical failure mode is score-override on negative-signal names (IEX, ZENTEC) and inability to execute clean loss exits (HINDMOTORS panic-drip), revealing a loss-aversion bias that coexists with an otherwise disciplined entry framework. This is a Systematic-Discretionary Hybrid with an undisciplined loss-management circuit—strong entry process, broken exit process on losing trades specifically."
+}

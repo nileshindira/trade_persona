@@ -32,6 +32,8 @@ class ReportGenerator:
             autoescape=True
         )
         self.jinja.filters['markdown'] = lambda text: markdown.markdown(str(text), extensions=['extra', 'tables', 'fenced_code'])
+        self.jinja.filters['format_currency'] = lambda val: "{:,.0f}".format(float(val)) if val is not None else "0"
+        self.jinja.filters['toLocaleString'] = lambda val: "{:,.0f}".format(float(val)) if val is not None else "0"
 
 
 
@@ -71,6 +73,12 @@ class ReportGenerator:
             return obj
 
         # ----------------------------------------
+        # Integers (keep as int for Jinja formatting)
+        # ----------------------------------------
+        if isinstance(obj, (int, np.integer)):
+            return int(obj)
+
+        # ----------------------------------------
         # NumPy numeric (may contain nan/inf)
         # ----------------------------------------
         if isinstance(obj, np.generic):
@@ -95,7 +103,7 @@ class ReportGenerator:
         # Boolean → convert to string
         # ----------------------------------------
         if isinstance(obj, bool):
-            return "True" if obj else "False"
+            return obj
 
         # ----------------------------------------
         # None → empty string
@@ -140,7 +148,7 @@ class ReportGenerator:
         hero = {
             "trader_name": trader_name,
             "analysis_period": metrics.get("date_range", "N/A"),
-            "persona_name": identity.get("trader_name", "Unknown Trader"),
+            "persona_name": identity.get("persona_name", "Pending Identity..."),
             "headline": master.get("headline", "Trading performance analysis"),
             "topline": {
                 "net_pnl": metrics.get("total_pnl_combined", metrics.get("total_pnl", 0)),
@@ -160,19 +168,17 @@ class ReportGenerator:
         _archetype_name = metrics.get("archetype", {}).get("name", "")
         
         diagnosis = {
-            "trader_type":    _get_val(identity, "trader_type") or _get_val(identity, "primary_strategy") or _archetype_name or "Unknown",
-            "inferred_style": _get_val(identity, "primary_strategy", _archetype_name or "N/A"),
-            "natural_edge":   _get_val(identity, "natural_edge", _get_val(identity, "narrative", "Analyze your data for a natural edge."))[:500],
+            "trader_type":    _get_val(identity, "trader_type") or _archetype_name or "Unknown",
+            "inferred_style": _get_val(identity, "trader_type", _archetype_name or "N/A"),
+            "natural_edge":   _get_val(identity.get("core_identity", {}), "opportunity_behavior") or _get_val(identity, "narrative", "Analyze your data for professional behavioral grounding.")[:500],
             "risk_profile":   identity.get("risk_profile", {"appetite": "N/A", "handling": "N/A"}),
-            "narrative":      identity.get("narrative", "Analysis pending..."),
+            "narrative":      identity.get("narrative", "Grounded analysis pending..."),
             "efficiency_metrics": analysis.get("efficiency_metrics", {}),
             "market_context":   analysis.get("market_context_metrics", {}),
         }
 
-
-
         # 3. Build improvement plan
-        plan = master.get("improvement_plan", {})
+        plan = master.get("improvement_roadmap", {})
         improvement_plan = {
             "next_5_sessions": plan.get("next_5_sessions", []),
             "next_30_days":    plan.get("next_30_days",    []),
@@ -196,7 +202,13 @@ class ReportGenerator:
                 "supporting_trades":  [],
             })
 
-        # 5. Construct Final Report
+        # 5. Construct Final Report (Lean version for HTML/JSON export)
+        # Lean versions for root (remove redundant huge lists)
+        lean_metrics = {k: v for k, v in metrics.items() if k not in [
+            'consolidated_trace', 'merged_trades', 'positions', 'closed_positions', 'open_positions'
+        ]}
+        lean_web = {k: v for k, v in web.items() if k not in ['merged_trades', 'raw_patterns']}
+
         archetype = metrics.get("archetype", {})
         report = {
             "hero": hero,
@@ -220,15 +232,19 @@ class ReportGenerator:
                 "risk_score":    self._risk_score(metrics, patterns),
                 "risk_severity": web.get("risk_severity", "LOW"),
             },
-            "web_data":      web,
+            "web_data":      lean_web,
             "analysis_text": analysis.get("analysis_text", {}),
             "hard_flags":    web.get("hard_flags", {}),
             "appendix": {
-                "metrics":        metrics,
-                "charts":         web.get("charts",         {}),
-                "positions":      (metrics.get("positions", []) + metrics.get("closed_positions", [])),
-                "persona_scores": web.get("persona_scores", {}),
-                "patterns":       patterns,
+                "metrics":          lean_metrics,  # Lean version for overall stats
+                "charts":           web.get("charts",         {}),
+                "open_positions":   metrics.get("open_positions", [])[:250],
+                "closed_positions": metrics.get("closed_positions", [])[:250],
+                "merged_trades":    web.get("merged_trades", [])[:500],
+                "simulations":      web.get("simulations",   {}),
+                "persona_scores":   web.get("persona_scores", {}),
+                "patterns":         patterns,
+                "consolidated_trace": metrics.get("consolidated_trace", [])[:500]  # TRUNCATE FOR HTML PERFORMANCE
             }
         }
 
@@ -241,7 +257,7 @@ class ReportGenerator:
     def _exec_summary(self, m, s):
         return {
             "total_trades": s.get("total_trades", m.get("total_trades", 0)),
-            "net_pnl": m.get("total_pnl_combined", 0),
+            "net_pnl": m.get("total_pnl_combined", m.get("total_pnl", 0)),
             "win_rate": s.get("win_rate", 0),
             "sharpe_ratio": s.get("sharpe_ratio", 0),
             "max_drawdown_pct": s.get("max_drawdown_pct", 0),
@@ -279,19 +295,32 @@ class ReportGenerator:
         tpl = self.jinja.get_template("report.html")
         report_safe = self.make_jinja_safe(report)
         
+        # Create a lean version of the report for the embedded JSON block
+        # JavaScript charts only need metadata, summary metrics and 'charts'/'persona_scores'
+        # They DON'T need the thousands of row objects for consolidated_trace, etc.
+        json_report = {}
+        for k, v in report_safe.items():
+            if k == 'appendix' and isinstance(v, dict):
+                # Appendix is the heavy part, prune it for JSON
+                lean_appendix = {ak: av for ak, av in v.items() if ak not in [
+                    'consolidated_trace', 'merged_trades', 'open_positions', 'closed_positions', 'patterns'
+                ]}
+                json_report[k] = lean_appendix
+            else:
+                json_report[k] = v
+
         # Read theme content to embed directly
         theme_path = self.themes_dir / f"{theme}.css"
-        if theme_path.exists():
-            theme_css_content = theme_path.read_text(encoding="utf-8")
-        else:
-            theme_css_content = ""
+        theme_css_content = theme_path.read_text(encoding="utf-8") if theme_path.exists() else ""
 
         html = tpl.render(
-            report=report_safe,
+            report=report_safe,      # Used for Jinja table Rendering (needs all data)
+            json_report=json_report,  # Used for embedded JSON block (lean & fast)
             static_path="../../src/static",
-            theme_css=f"../../src/static/css/themes/{theme}.css", # Keep as backup
-            theme_css_html=f"<style>\n{theme_css_content}\n</style>" if theme_css_content else "" # New embedded content
+            theme_css=f"../../src/static/css/themes/{theme}.css",
+            theme_css_html=f"<style>\n{theme_css_content}\n</style>" if theme_css_content else ""
         )
+
 
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         Path(filepath).write_text(html, encoding="utf-8")

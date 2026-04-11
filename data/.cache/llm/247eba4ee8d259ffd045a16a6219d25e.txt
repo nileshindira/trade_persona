@@ -1,0 +1,72 @@
+{
+  "chunk_id": "chunk_1",
+  "forensic_summary": "This tape reveals a trader operating across two distinct behavioral regimes. Phase 1 (Oct-Nov 2025): Primarily a liquidity harvester with an event-driven bias, executing large institutional-scale exits on high-conviction setups (STALLION, ADANIGREEN, VBL, ESSARSHPNG). Scores are generally above 60, f_score=1.0 across the board, and the trader is selling into 'Extreme Bullish' conditions — a contrarian exit discipline consistent with a distribution strategy. Phase 2 (Dec 2025–Mar 2026): The behavioral DNA fractures. Score anchoring breaks down entirely — buys appear with t_scores of -3.37 (PAYTM), -2.74 (ADANIGREEN re-entry), -2.73 (JSWENERGY), and -2.72 (KAYNES) — all negative momentum against the trader's own scoring system. Null scores proliferate (MEESHO, GROWW, BHARATCOAL, INOXWIND), suggesting off-system discretionary trades or new/unscored instruments being added to the book. The MEESHO sequence is particularly diagnostic: a 20,000-unit buy at 161.2, rapid partial exits at 171-172, then a chaotic re-entry at 196-229 followed by frantic intraday sell-buy-sell oscillations on Dec 18 across 73 sub-trades — classic signs of a trader who captured a fast move, over-celebrated, re-entered at a worse price, and then churned the position in real-time confusion. JBMA (Mar 18-19) shows a 5,000-unit buy at 590.6 followed by 5,044-unit liquidation the next day at 547.15 — a ~7.5% loss exit on a score of 46.38, the lowest exit score in the dataset. The HINDCOPPER sequence shows a 908-unit sell at 760.05 immediately followed by a 916-unit buy at the same price (~30 seconds later) — a near-instantaneous reversal indicative of either a signal flip or psychological hesitation crystallized in the tape. Across the full chunk, the trader's score-to-size discipline is high in Phase 1 and substantially degraded in Phase 2.",
+  "execution_quality": {
+    "timing": "5",
+    "sizing": "4",
+    "notes": "Phase 1 execution shows competent distribution mechanics — exiting large positions (STALLION: 5,804 units sold across event day; ADANIGREEN: ~7,000+ units sold on Oct 29 event) in clustered, high-volume windows. The KIOCL sale of 3,000 units at 564.85 the day after a 300-unit sale at 631 is a sequential degradation — the second leg executes 10.5% lower on the same instrument within 24 hours, suggesting either a broken exit plan or forced liquidation. EIMCOELECO entry on Oct 8 (259 units at 2301, bearish market behaviour) is immediately followed by a 4-unit add at 2038.9 the next day — a 11.4% gap-down with score dropping from 62.38 to 40.5, a clear loss-addition. In Phase 2, IRCON demonstrates a sell at 179 (Dec 26), buy at 182.22 (Jan 2 — higher), then sell at 172.2 (Jan 8 — lower than both). This is a three-leg chopout that extracts negative value at every turn. TTML is bought at 54.78 in 'Extreme Bearish' with a score of 37.88 — one of the weakest-scored buys in Phase 1 style period — suggesting the system's market_behaviour filter is not enforced at entry. The ABSLAMC sequence on Mar 10 is the clearest flush: 461 units bought at 1046.55, then 1,548 units sold 12 seconds later at 1046.0 — the entire position plus more, at a loss, with t_score=100. This is an instantaneous capitulation that is inconsistent with a score that high and suggests either a fat finger, system malfunction, or panic exit layered onto someone else's entry."
+  },
+  "behavioral_signals": [
+    {
+      "signal": "Score-Decoupled Entry Bias in Phase 2",
+      "evidence": "PAYTM BUY Jan 23 t_score=-3.37; ADANIGREEN BUY Jan 23 t_score=-2.74 (re-buying a stock previously sold at 1104 for 814 — 26% lower, still negative t_score); JSWENERGY BUY Jan 27 t_score=-2.73; KAYNES SALE Dec 8 t_score=-2.72. All represent action directly contradicting the trader's own scoring system. In Phase 1, no trade with t_score below -1.71 resulted in a buy. In Phase 2, the trader enters long with t_scores in the -2.7 to -3.4 range repeatedly.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Loss Addition / Averaging Down Under Duress",
+      "evidence": "EIMCOELECO: 259 units bought Oct 8 at 2301 (score 62.38, bearish market), then 4 more units added Oct 9 at 2038.9 (score dropped to 40.5, still bearish) — adding to a losing position with a deteriorating score. IRCON: sold 788 units Dec 26 at 179, then bought 257 units Jan 2 at 182.22 (higher price), then sold 253 units Jan 8 at 172.2 (below both). HINDCOPPER: bought 916 units Jan 29 at 760.05, sold 100 on Jan 30 at 705.0 (-7.2%), then bought 78 more at 691.75 on same day — adding to a losing position.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Momentum Re-Chase After Profitable Partial Exit",
+      "evidence": "MEESHO: Initial 20,000-unit buy at 161.2 (Dec 10), fast partial exit at ~172 (+6.5%), then re-entry of 1,269 units at 196.51-196.53 (Dec 17, +22% above original entry), followed by a 700-unit sale at 211-229 and then chaotic 18 micro-trades on Dec 18 oscillating between 210-229 with buy-sell-buy-sell sequencing within 2.5 hours. The Dec 17 re-entry at 196 is 22% above the Dec 10 buy, executed after missing the bulk of the move — textbook FOMO re-entry.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Instantaneous Position Reversal / Hesitation Crystallized in Tape",
+      "evidence": "HINDCOPPER Jan 29: SALE 908 units at 760.05 at 13:52:28, then BUY 916 units at 760.05 between 13:52:57-13:52:59 — full reversal within 31 seconds at the same price. ADANIGREEN Oct 29: SALE 1,106 units at 1104.6 at 11:07:49, BUY 5,000 units at 1104.6 at 11:13:40 (6 minutes later), then SALE 2,942 units at 1104.6 at 11:15:15. Net result of 8 minutes of activity is a confused churn around the same price point on an event-day position. BALUFORGE Feb 9: 500 sold at 486.0, then 2,332 bought and 1,000 sold at 486.8 within the same minute — net long addition framed as a wash.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Off-System Discretionary Trading with No Score Anchor",
+      "evidence": "GROWW (Nov 17, Dec 19), MEESHO (Dec 10-18), BHARATCOAL (Jan 19 — 9 lots of 600 at 45.0, identical fills, total_score=null), SMLMAH (Jan 8, Feb 12), INOXWIND (Feb 16), IIFL (Jan 22) — all executed with null total_score and null market_behaviour. These represent a shadow book operating outside the scoring framework. BHARATCOAL is particularly anomalous: 9 identical 600-unit buys at exactly 45.0 at the same timestamp — a programmatic or basket fill with zero system scoring.",
+      "confidence": "HIGH",
+      "impact": "Medium"
+    },
+    {
+      "signal": "Capitulation Exit on Maximum-Score Setup",
+      "evidence": "ABSLAMC Mar 10: BUY 461 units at 1046.55 at 13:20:36 with total_score=78, t_score=100 (maximum possible). Within 12 seconds (13:20:48), 1,548 units SOLD at 1046.0 — the entire position plus surplus, at a loss. A t_score of 100 is the highest in the dataset; the immediate exit at a worse price signals either a system error, an external forced-close, or a panic response that completely overrides a maximum-conviction signal.",
+      "confidence": "MEDIUM",
+      "impact": "High"
+    },
+    {
+      "signal": "Systematic Exit Below Entry on Low-Score Positions",
+      "evidence": "NELCAST: BUY 8,514 units at 142.96 (Feb 10, score 64.0), SALE 488 units at 123.03 (Feb 12, score dropped to 42.12) — 13.9% loss, sold at a lower score. JBMA: BUY 5,304 units at 590.6 (Mar 18, score 65.25), SALE 5,044 units at 547.15 (Mar 19, score dropped to 46.38) — 7.4% loss, score collapsed 19 points overnight. GROWW: BUY at 178.23 (Nov 17), SALE at 157.45 (Dec 19) — 11.7% loss over 32 days. The pattern of entry at moderate scores and exit at degraded scores with negative PnL is consistent across the back half of the chunk.",
+      "confidence": "HIGH",
+      "impact": "High"
+    },
+    {
+      "signal": "Selling Into Strength / Distribution at High Scores",
+      "evidence": "HINDCOPPER Jan 29: total_score=90.5, t_score=3.74 — highest scored single trade in the chunk — and the first action is a 908-unit SALE. STALLION Oct 16: score=82.5, sells 5,804 units across the day. COASTCORP Oct 23: score=73.0, t_score=3.45 — pure sale. KIOCL Oct 6-7: score 73/60.5, high volume sales. This is a consistent distribution pattern: the scoring system appears to identify high-momentum conditions, and the trader's primary instinct at those peaks is to sell, which is structurally sound — but the immediate re-buy sequences (HINDCOPPER, ADANIGREEN, STALLION) indicate the trader cannot commit to the exit decision.",
+      "confidence": "HIGH",
+      "impact": "Medium"
+    }
+  ],
+  "risk_flags": [
+    "Negative t_score entries (range -2.73 to -3.37) executed as BUY signals in Jan 2026 — direct contradiction of the scoring framework used in Phase 1",
+    "ABSLAMC: BUY with t_score=100 immediately followed by 3x-sized SALE at a loss within 12 seconds — position management breakdown or system override",
+    "MEESHO: 20,000-unit initial position with null scores — largest single-name quantity in the dataset, executed entirely outside the scoring system",
+    "BHARATCOAL: 9 identical 600-unit buys with null scores in a single timestamp — opaque basket/program execution bypassing risk scoring",
+    "JBMA: 5,304-unit buy and 5,044-unit next-day liquidation at -7.4% — largest single realized loss event by notional in Phase 2",
+    "HINDCOPPER: 908-unit sell and 916-unit re-buy within 31 seconds at identical price — indecision crystallized at execution layer, zero net result at a transaction cost",
+    "ADANIGREEN Phase 1 vs Phase 2 contradition: sold 7,000+ units at 1104 in Oct 2025 (score 69.88), re-bought 2,422 units at 814.2 in Jan 2026 (score 38.62, t_score=-2.74) — re-entered the same stock 26% lower with a dramatically worse score profile",
+    "IRCON three-leg negative sequence: sell high → buy higher → sell lower, net negative extraction across all three legs",
+    "Null score proliferation from Dec 2025 onward suggests a scoring system partially abandoned or new instruments added without coverage — 40%+ of Dec-Mar trades carry null total_score",
+    "EIMCOELECO: Loss addition on a bearish-market instrument with score deteriorating from 62.38 to 40.5 — stop discipline absent"
+  ],
+  "operating_style_hint": "Phase 1 (Oct-Nov 2025): Institutional Distributor with Event Overlay — executes large-scale exits on high-score, event-tagged setups into bullish market conditions, demonstrating distribution discipline and scoring adherence. The sell-side execution across STALLION, ADANIGREEN, VBL, ESSARSHPNG is methodical and high-volume. Phase 2 (Dec 2025-Mar 2026): Deteriorates into a Disoriented Swing Accumulator with FOMO Chasing tendencies — re-enters previously exited positions at worse prices, trades instruments entirely outside the scoring system (null scores), adds to losing positions, and executes same-second reversals. The composite persona is a high-competence institutional-style trader whose Phase 2 behavior is consistent with someone who experienced a performance drawdown or contextual disruption (possibly market regime change from Extreme Bullish to Extreme Bearish) and responded by abandoning system discipline in favor of unstructured discretionary action. The score-system was functioning as a genuine edge anchor in Phase 1; the Phase 2 off-system trades represent a behavioral regression to pre-system habits — momentum chasing, loss-averaging, and FOMO re-entry."
+}

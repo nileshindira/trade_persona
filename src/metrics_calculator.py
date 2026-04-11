@@ -47,6 +47,11 @@ class TradingMetricsCalculator:
         self.trading_days = config['metrics']['trading_days_per_year']
         self.logger = logging.getLogger(__name__)
 
+        # Initialize P&L counters
+        self.last_pnl = 0.0
+        self.cumulative_pnl = 0.0
+        self.pnl_df = pd.DataFrame()
+
         # Load sector mapping from local CSV
         self.sector_map = {}
         try:
@@ -145,7 +150,7 @@ class TradingMetricsCalculator:
     # =========================================================
     # Public Entry
     # =========================================================
-    def calculate_all_metrics(self, df: pd.DataFrame, pnl_csv :str, nifty_data: Dict = None) -> Dict:
+    def calculate_all_metrics(self, df: pd.DataFrame, pnl_csv :str, nifty_data: Dict = None, patterns: Dict = None) -> Dict:
         """Calculate all trading metrics and persona traits with extended analytics."""
         df = df.copy()
         
@@ -216,10 +221,17 @@ class TradingMetricsCalculator:
         metrics['symbol_details'] = pos['symbol_details']
         metrics['trader_type'] = pos['trader_type']
 
-
         # -------- Persona traits (existing) --------
-        persona_traits = self.calculate_persona_traits(df)
+        persona_traits = self.calculate_persona_traits(df, patterns)
         metrics.update(persona_traits)
+        metrics["_patterns"] = patterns # Store for hard flags
+        
+        # Ground behavioral counts in the pattern detector results to ensure 100% consistency across the report
+        if patterns:
+             metrics["revenge_count"] = patterns.get("revenge_trading", {}).get("count", 0)
+             metrics["loss_averaging_count"] = patterns.get("loss_averaging", {}).get("events_count", 0)
+             metrics["chasing_count"] = patterns.get("chasing_losses", {}).get("count", 0)
+             metrics["fomo_count"] = patterns.get("fomo_trading", {}).get("fomo_count", 0)
 
         hard_flags = self.compute_hard_flags(metrics)
         metrics["_hard_flags"] = hard_flags
@@ -230,11 +242,14 @@ class TradingMetricsCalculator:
 
         # --- 🧩 NEW METRICS (added safely) ---
         # Market / Price-action
-        metrics["avg_daily_range"] = (df["high"] - df["low"]).mean()
-        metrics["avg_close_to_open_return"] = ((df["close"] - df["open"]) / df["open"]).mean() * 100
-        metrics["volatility_index"] = (((df["high"] - df["low"]) / df["open"]).std() * 100)
-        metrics["volume_volatility"] = df["volume"].std() / df["volume"].mean() if df["volume"].mean() != 0 else 0
-        metrics["avg_volume_per_trade"] = df["volume"].mean()
+        if all(col in df.columns for col in ["high", "low", "open", "close"]):
+            metrics["avg_daily_range"] = (df["high"] - df["low"]).mean()
+            metrics["avg_close_to_open_return"] = ((df["close"] - df["open"]) / df["open"]).mean() * 100
+            metrics["volatility_index"] = (((df["high"] - df["low"]) / df["open"]).std() * 100)
+        
+        if "volume" in df.columns:
+            metrics["volume_volatility"] = df["volume"].std() / df["volume"].mean() if df["volume"].mean() != 0 else 0
+            metrics["avg_volume_per_trade"] = df["volume"].mean()
 
         # Score-based
         for col in ["t_score", "f_score", "total_score"]:
@@ -407,10 +422,14 @@ class TradingMetricsCalculator:
         if "total_score" in df.columns:
             metrics["score_alignment_effectiveness"] = df["total_score"].corr(df["pnl"])
         if "pnl" in df.columns:
-            pcol = "pnl" if "pnl" in self.pnl_df.columns else "MTM"
-            avg_win = self.pnl_df.loc[self.pnl_df[pcol] > 0, pcol].mean()
-            avg_loss = self.pnl_df.loc[self.pnl_df[pcol] < 0, pcol].mean()
-            metrics["reward_to_risk_balance"] = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
+            # Check pnl_df (benchmark timeline) first, but fallback to df (actual trade pairs)
+            source_df = self.pnl_df if not self.pnl_df.empty else df
+            pcol = "pnl" if "pnl" in source_df.columns else ("MTM" if "MTM" in source_df.columns else "pnl")
+            
+            avg_win_val = source_df.loc[source_df[pcol] > 0, pcol].mean() if not source_df[source_df[pcol] > 0].empty else 0
+            avg_loss_val = source_df.loc[source_df[pcol] < 0, pcol].mean() if not source_df[source_df[pcol] < 0].empty else 0
+            
+            metrics["reward_to_risk_balance"] = (float(avg_win_val) / abs(float(avg_loss_val))) if avg_loss_val != 0 else 0
             # ================================
             # NEW – Instrument Cluster Metrics (symbol → category)
             # ================================
@@ -435,10 +454,28 @@ class TradingMetricsCalculator:
                 else:
                     cluster_pct = cluster_value * 0.0
 
-                asset_clusters = [
-                    {"asset_kind": cat, "value": float(pct)}
-                    for cat, pct in cluster_pct.items()
-                ]
+                asset_clusters = []
+                for cat, pct in cluster_pct.items():
+                    # Get stocks and pnl for this cluster
+                    cluster_group = df[df["_asset_kind"] == cat]
+                    cluster_pnl = float(cluster_group["pnl"].sum()) if "pnl" in cluster_group.columns else 0.0
+                    cluster_stocks = []
+                    if "symbol" in cluster_group.columns and "pnl" in cluster_group.columns:
+                        for symbol, sym_group in cluster_group.groupby("symbol"):
+                            cluster_stocks.append({
+                                "symbol": symbol,
+                                "pnl": float(sym_group["pnl"].sum()),
+                                "trade_count": len(sym_group)
+                            })
+                    # Sort by pnl impact
+                    cluster_stocks = sorted(cluster_stocks, key=lambda x: abs(x["pnl"]), reverse=True)
+                    
+                    asset_clusters.append({
+                        "asset_kind": cat, 
+                        "value": float(pct),
+                        "pnl": cluster_pnl,
+                        "stocks": cluster_stocks[:15]
+                    })
             else:
                 asset_clusters = []
             metrics["chart_data"]={}
@@ -463,10 +500,25 @@ class TradingMetricsCalculator:
                 else:
                     name_pct = name_value * 0.0
 
-                asset_name_clusters = [
-                    {"asset_name": name, "value": float(pct)}
-                    for name, pct in name_pct.items()
-                ]
+                asset_name_clusters = []
+                for name, pct in name_pct.items():
+                    name_group = df[df["_asset_name"] == name]
+                    name_pnl = float(name_group["pnl"].sum()) if "pnl" in name_group.columns else 0.0
+                    name_stocks = []
+                    if "symbol" in name_group.columns and "pnl" in name_group.columns:
+                        for symbol, sym_group in name_group.groupby("symbol"):
+                            name_stocks.append({
+                                "symbol": symbol,
+                                "pnl": float(sym_group["pnl"].sum()),
+                                "trade_count": len(sym_group)
+                            })
+                    name_stocks = sorted(name_stocks, key=lambda x: abs(x["pnl"]), reverse=True)
+                    asset_name_clusters.append({
+                        "asset_name": name,
+                        "value": float(pct),
+                        "pnl": name_pnl,
+                        "stocks": name_stocks[:10]
+                    })
             else:
                 asset_name_clusters = []
 
@@ -482,10 +534,16 @@ class TradingMetricsCalculator:
                 total_val = float(sector_value.sum())
                 if total_val > 0:
                     sector_val_pct = (sector_value / total_val * 100).round(2)
-                    metrics["sector_segregation"] = [
-                        {"label": s, "value": float(p)}
-                        for s, p in sector_val_pct.items()
-                    ]
+                    metrics["sector_segregation"] = []
+                    for s, p in sector_val_pct.items():
+                        sector_df = df[df["industry"] == s]
+                        sector_stocks = self._get_stock_metrics(sector_df)
+                        metrics["sector_segregation"].append({
+                            "label": str(s),
+                            "value": float(p),
+                            "pnl": float(sector_df["pnl"].sum()) if "pnl" in sector_df.columns else 0.0,
+                            "stocks": sector_stocks[:10]
+                        })
                 else:
                     metrics["sector_segregation"] = []
 
@@ -551,13 +609,19 @@ class TradingMetricsCalculator:
                 metrics["market_behaviour_distribution"] = []
 
         if "industry" in df.columns:
-            # Check if column has data
             if not df["industry"].dropna().empty:
-                ind_counts = df["industry"].value_counts()
-                metrics["industry_distribution"] = [
-                    {"label": str(k), "value": int(v)}
-                    for k, v in ind_counts.items()
-                ]
+                metrics["industry_distribution"] = []
+                for ind, group in df.groupby("industry"):
+                    pnl_val = float(group["pnl"].sum()) if "pnl" in group.columns else 0.0
+                    # Detailed Stock Level Breakdown with full metrics pack for hover tables
+                    ind_stocks = self._get_stock_metrics(group)
+                    
+                    metrics["industry_distribution"].append({
+                        "label": str(ind),
+                        "value": len(group),
+                        "pnl": pnl_val,
+                        "stocks": ind_stocks[:10]
+                    })
             else:
                 metrics["industry_distribution"] = []
 
@@ -613,7 +677,162 @@ class TradingMetricsCalculator:
         metrics["behavioral_consistency_score"] = self._compute_consistency_score(df, metrics)
         metrics["emotional_leakage_index"] = self._compute_emotional_leakage(metrics)
 
+        # ==================================
+        # 🎯 Phase 3 – Consolidated Trace Sheet
+        # ==================================
+        metrics["consolidated_trace"] = self._generate_consolidated_trace(df, metrics, patterns)
+
         return metrics
+
+    def _generate_consolidated_trace(self, df: pd.DataFrame, metrics: Dict, patterns: Dict = None) -> List[Dict]:
+        """
+        Consolidated trace based on user-requested columns.
+        """
+        if df.empty:
+            return []
+
+        # 🔥 CRITICAL: Sort by date but RETAIN the original index to match pattern detection
+        df = df.copy().sort_values("trade_date")
+
+        # -----------------------------
+        # 1. Pattern map
+        # -----------------------------
+        pattern_map = {}
+        if patterns:
+            for p_name, p_data in patterns.items():
+                if isinstance(p_data, dict):
+                    trade_indices = p_data.get(f"{p_name}_trades", p_data.get("trades", []))
+                    if isinstance(trade_indices, list):
+                        for idx in trade_indices:
+                            pattern_map.setdefault(idx, []).append(p_name.replace("_", " ").title())
+
+        # -----------------------------
+        # 2. Running streaks
+        # -----------------------------
+        win_streaks, loss_streaks = [], []
+        curr_win, curr_loss = 0, 0
+
+        for pnl in df["pnl"].fillna(0):
+            if pnl > 0:
+                curr_win += 1
+                curr_loss = 0
+            elif pnl < 0:
+                curr_loss += 1
+                curr_win = 0
+            else:
+                curr_win = 0
+                curr_loss = 0
+
+            win_streaks.append(curr_win)
+            loss_streaks.append(curr_loss)
+
+        df["win_streak"] = win_streaks
+        df["loss_streak"] = loss_streaks
+
+        # -----------------------------
+        # 3. Safe diagnostics
+        # -----------------------------
+        def safe_pct(x, lo=-100.0, hi=100.0):
+            if pd.isna(x) or np.isinf(x):
+                return None
+            return round(float(np.clip(x, lo, hi)), 2)
+
+        def calc_timing_eff_pct(row):
+            price = row.get("price", 0)
+            high = row.get("high", 0)
+            low = row.get("low", 0)
+            tx = str(row.get("transaction_type", "")).upper()
+
+            if pd.isna(price) or pd.isna(high) or pd.isna(low) or high <= low:
+                return None
+
+            rng = high - low
+            if rng <= 0:
+                return None
+
+            if tx == "BUY":
+                eff = (1 - ((price - low) / rng)) * 100
+            else:
+                eff = (1 - ((high - price) / rng)) * 100
+
+            return safe_pct(eff, 0, 100)
+
+        # -----------------------------
+        # 4. Sector lookup
+        # -----------------------------
+        sector_lookup = {}
+        if isinstance(metrics.get("sectoral_analysis"), dict):
+            for s_info in metrics["sectoral_analysis"].get("all_sectors", []):
+                sector_lookup[s_info.get("sector")] = s_info.get("top_gainer_symbol", "")
+
+        # -----------------------------
+        # 5. Iteration
+        # -----------------------------
+        trace = []
+
+        for idx, row in df.iterrows():
+            symbol = row.get("symbol", "")
+            tx_type = str(row.get("transaction_type", "")).upper()
+            
+            # Requested columns exactly as specified
+            item = {
+                "trade_date": str(row.get("trade_date", "")),
+                "symbol": symbol,
+                "transaction_type": tx_type,
+                "quantity": float(row.get("quantity", 0) or 0),
+                "price": float(row.get("price", 0) or 0),
+                "trade_value": float(row.get("trade_value", 0) or 0),
+                "charges": round(float(row.get("charges", (row.get("trade_value", 0) or 0) * 0.0005) or 0), 2),
+                "open": row.get("open", 0),
+                "high": row.get("high", 0),
+                "low": row.get("low", 0),
+                "close": row.get("close", 0),
+                "volume": row.get("volume", 0),
+                
+                "dma_10": row.get("dma_10", 0),
+                "ema_10": row.get("ema_10", 0),
+                "ema_21": row.get("ema_21", 0),
+                "ema_50": row.get("ema_50", 0),
+                "ema_100": row.get("ema_100", 0),
+                
+                "t_score": row.get("t_score", 0),
+                "f_score": row.get("f_score", 0),
+                "is_52week_high": row.get("is_52week_high", False),
+                "is_52week_low": row.get("is_52week_low", False),
+                "is_alltime_high": row.get("is_alltime_high", False),
+                "is_alltime_low": row.get("is_alltime_low", False),
+                "total_score": row.get("total_score", 0),
+                
+                "market_behaviour": row.get("market_behaviour", "Neutral"),
+                "ema_score": row.get("ema_score", 0),
+                "news_sentiment": row.get("news_sentiment", 0),
+                "news_impactscore": row.get("news_impactscore", 0),
+                "news_category": row.get("news_category", "N/A"),
+                "is_news": bool(row.get("is_news", False)),
+                "is_event": bool(row.get("is_event", False)),
+                "is_high_volume": bool(row.get("is_high_volume", False)),
+                
+                "chart_charts": row.get("chart_charts", ""),
+                # "sector_ema": str(row.get("sector_ema", "")),
+                "Timing Efficiecny": f"{round(calc_timing_eff_pct(row) or 0, 1)}%",
+                "pnl_pct": safe_pct((row.get("pnl", 0) / (row.get("trade_value", 0) + 1e-6)) * 100)
+            }
+
+            # Extra forensic fields (good to have for the persona logic)
+            pnl = float(row.get("pnl", 0) or 0)
+            item["pnl"] = round(pnl, 2)
+            item["win_streak"] = int(row.get("win_streak", 0) or 0)
+            item["loss_streak"] = int(row.get("loss_streak", 0) or 0)
+            item["pattern"] = ", ".join(pattern_map.get(idx, [])) if idx in pattern_map else "No Pattern"
+            
+            # Sector Best lookup
+            sector = row.get("industry", "Other Sector")
+            sector_best = sector_lookup.get(sector, "")
+            item["sector_alternate"] = sector_best if sector_best != symbol else "Self"
+
+            trace.append(item)
+
+        return trace
 
 
     # =================================================================
@@ -660,14 +879,15 @@ class TradingMetricsCalculator:
             return {"name": "The Contrarian Oracle", "code": "CONTRARIAN_ORACLE",
                     "tagline": "News-triggered contra trades with edge", "icon": "🔮",
                     "family": "Contrarian", "confidence": 0.75}
-        if consec_loss > 6 and pnl_vol > 15000:
-            return {"name": "The Chaos Trader", "code": "CHAOS_TRADER",
-                    "tagline": "Unpredictable patterns, high variance profile", "icon": "🌀",
-                    "family": "Chaotic", "confidence": 0.70}
-        # Default fallback — overnight mean-reversion
-        return {"name": "The Overnight Oracle", "code": "OVERNIGHT_ORACLE",
-                "tagline": "Overnight mean-reversion with a high win rate", "icon": "🌙",
-                "family": "Swing", "confidence": 0.72}
+        if hold_min < 60 and total_t >= 5:
+            return {"name": "The Intraday Scalper", "code": "INTRADAY_SCALPER",
+                    "tagline": "High-velocity execution with short intra-day holds", "icon": "⏱️",
+                    "family": "Intraday", "confidence": 0.82}
+        
+        # Default fallback — The Market Participant
+        return {"name": "The Market Participant", "code": "MARKET_PARTICIPANT",
+                "tagline": "Discretionary trading profile with mixed signals", "icon": "📈",
+                "family": "General", "confidence": 0.65}
 
     def _compute_trade_dna(self, df: pd.DataFrame, metrics: Dict) -> Dict:
         """Derive the trader's behavioral fingerprint from trade data."""
@@ -966,6 +1186,42 @@ class TradingMetricsCalculator:
 
         return evidence
 
+    def _get_stock_metrics(self, df: pd.DataFrame) -> List[Dict]:
+        """Helper to compute aggregated metrics for each stock in a given group (sector)"""
+        if "symbol" not in df.columns:
+            return []
+            
+        stock_stats = []
+        for symbol, sym_group in df.groupby("symbol"):
+            traded_group = sym_group[sym_group["pnl"] != 0]
+            if traded_group.empty: continue
+            
+            pnl_sum = float(traded_group["pnl"].sum())
+            total_trades = len(traded_group)
+            
+            wins = traded_group[traded_group["pnl"] > 0]
+            losses = traded_group[traded_group["pnl"] < 0]
+            
+            win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
+            loss_rate = (len(losses) / total_trades * 100) if total_trades > 0 else 0
+            
+            max_win = float(wins["pnl"].max()) if not wins.empty else 0
+            max_loss = float(losses["pnl"].min()) if not losses.empty else 0
+            
+            stock_stats.append({
+                "symbol": symbol,
+                "pnl": pnl_sum,
+                "max_win": max_win,
+                "max_loss": max_loss,
+                "win_rate": round(win_rate, 2),
+                "loss_rate": round(loss_rate, 2),
+                "trade_count": total_trades,
+                "avg_pnl": pnl_sum / total_trades if total_trades > 0 else 0
+            })
+            
+        # Sort stocks by pnl impact (absolute value)
+        return sorted(stock_stats, key=lambda x: abs(x["pnl"]), reverse=True)
+
     def _compute_sectoral_analysis(self, df: pd.DataFrame) -> Dict:
         """Analyze sector-level profitability and trading patterns with detailed metrics"""
         if "industry" not in df.columns or df["industry"].dropna().empty:
@@ -990,6 +1246,13 @@ class TradingMetricsCalculator:
             max_pnl = float(traded_group["pnl"].max())
             max_loss = float(traded_group["pnl"].min()) # Most negative value
             
+            # Detailed Stock Level Breakdown with full metrics pack for hover tables
+            stocks = self._get_stock_metrics(traded_group)
+
+            # --- FIX: Correctly find top gainer/loser symbol based on P&L values, not absolute scale ---
+            top_gainer = max(stocks, key=lambda x: x["pnl"]) if stocks else None
+            top_loser = min(stocks, key=lambda x: x["pnl"]) if stocks else None
+
             sector_stats.append({
                 "sector": sector,
                 "pnl": pnl_sum,
@@ -998,7 +1261,10 @@ class TradingMetricsCalculator:
                 "max_pnl": max_pnl,
                 "max_loss": max_loss,
                 "trade_count": total_trades,
-                "avg_pnl": pnl_sum / total_trades if total_trades > 0 else 0
+                "avg_pnl": pnl_sum / total_trades if total_trades > 0 else 0,
+                "top_gainer_symbol": top_gainer["symbol"] if (top_gainer and top_gainer["pnl"] > 0) else None,
+                "top_loser_symbol": top_loser["symbol"] if (top_loser and top_loser["pnl"] < 0) else None,
+                "stocks": stocks[:20] # Increased to 20 for better visibility in hover
             })
 
         if not sector_stats: return {}
@@ -1184,7 +1450,7 @@ class TradingMetricsCalculator:
         return float(df['pnl'].sum())
 
     def calculate_win_rate(self, df: pd.DataFrame) -> float:
-        # Exclude pnl=0 rows (unmatched open legs) from win rate calculation
+        """Calculates win rate based on trades with positive PnL (Excl. Zeros)."""
         traded = df[df['pnl'] != 0]
         if len(traded) == 0:
             return 0.0
@@ -1200,6 +1466,7 @@ class TradingMetricsCalculator:
         return float(losing_trades.mean()) if len(losing_trades) > 0 else 0.0
 
     def calculate_overall_win_rate(self, df: pd.DataFrame) -> float:
+        """Calculates win rate based on ALL trades (Incl. Zeros/Expired/Open)."""
         if len(df) == 0:
             return 0.0
         winning_trades = len(df[df['pnl'] > 0])
@@ -1777,7 +2044,10 @@ class TradingMetricsCalculator:
         # =========================
         total_realized = float(realized_by_symbol.sum())
         total_unrealized = float(sym_open["unrealized"].sum())
-        total_pnl_combined = self.cumulative_pnl
+        # Use calculated P&L from trades for the primary combined metric to ensure internal reconciliation
+        total_pnl_calculated = total_realized + total_unrealized
+        # Preservation: we keep external P&L from CSV in external_pnl_combined if provided
+        external_pnl = getattr(self, "cumulative_pnl", total_pnl_calculated)
         total_investment_value = float(sym_open["invested_value"].sum())
 
         # Day MTM = realized pnl on latest trading date in file
@@ -1827,7 +2097,8 @@ class TradingMetricsCalculator:
             "day_mtm": day_mtm_realized,
             "total_realized_pnl": total_realized,
             "total_unrealized_pnl": total_unrealized,
-            "total_pnl_combined": total_pnl_combined,
+            "total_pnl_combined": total_pnl_calculated,
+            "external_pnl_combined": external_pnl,
             "total_investment_value_open": total_investment_value,
             "avg_realized_pl_per_stock": avg_realized_per_stock,
             "avg_unrealized_pl_per_open_stock": avg_unrealized_per_open_stock,
@@ -1920,6 +2191,8 @@ class TradingMetricsCalculator:
         return out
 
     def _build_pnl_timeline(self, csv_path: str, nifty_data: Dict = None) -> Dict[str, List]:
+        if not csv_path:
+            return {'dates': [], 'values': [], 'benchmark_values': [], 'benchmark_original_values': []}
         df = pd.read_csv(csv_path)
         self.pnl_df = df
         
@@ -1974,13 +2247,13 @@ class TradingMetricsCalculator:
     # =========================================================
     # Persona Trait Analysis (unchanged)
     # =========================================================
-    def calculate_persona_traits(self, df: pd.DataFrame) -> Dict:
+    def calculate_persona_traits(self, df: pd.DataFrame, patterns: Dict = None) -> Dict:
         if df.empty:
             return {}
 
         traits = {
             "discipline_score": self._calc_discipline_score(df),
-            "emotional_control": self._calc_emotional_control(df),
+            "emotional_control": self._calc_emotional_control(df, patterns),
             "risk_appetite": self._calc_risk_appetite(df),
             "risk_handling": self._calc_risk_handling(df), # NEW: Handling skill
             "patience": self._calc_patience(df),
@@ -2050,7 +2323,7 @@ class TradingMetricsCalculator:
         discipline = 1 / (1 + (0.5 * trade_size_var + 0.5 * (pnl_vol / 1000) + 0.1 * (trade_freq_var or 0)))
         return round(discipline, 2)
 
-    def _calc_emotional_control(self, df: pd.DataFrame) -> float:
+    def _calc_emotional_control(self, df: pd.DataFrame, patterns: Dict = None) -> float:
         df_sorted = df.sort_values("trade_date")
         pnl_shift = df_sorted["pnl"].shift(1)
         time_diff = (df_sorted["trade_date"] - df_sorted["trade_date"].shift(1)).dt.total_seconds() / 60
@@ -2059,6 +2332,14 @@ class TradingMetricsCalculator:
         avg_recovery_time = np.mean(time_diff[pnl_shift < 0]) if (pnl_shift < 0).any() else 30
         control = max(0, 1 - (0.3 * revenge_trades / len(df) + 0.3 * impulsive_trades / len(df)))
         control *= min(1.0, avg_recovery_time / 30)
+        
+        # New penalty: Loss averaging implies emotional attachment/denial
+        if patterns:
+             loss_avg_count = patterns.get("loss_averaging", {}).get("events_count", 0)
+             if loss_avg_count > 0:
+                 # Significant penalty if loss averaging is detected frequently relative to trade count
+                 control *= max(0.1, 1 - (loss_avg_count / (len(df) + 1) * 3))
+            
         return round(control, 2)
 
     def _calc_risk_appetite(self, df: pd.DataFrame) -> float:
@@ -2186,9 +2467,19 @@ class TradingMetricsCalculator:
             "MIXED": 6
         }.get(trader_type, 6)
 
+        tpnl = metrics.get("total_pnl_combined", 0)
+        
+        # New Formula: Use pattern detection result if available (it accounts for PnL)
+        # Otherwise fallback to: avg_trades > 1.3 * trade_limit AND pnl < 0
+        patterns = metrics.get("_patterns", {})
+        if "overtrading" in patterns:
+            is_overtrading = patterns["overtrading"].get("detected", False)
+        else:
+            is_overtrading = (avg_trades > 1.3 * trade_limit) and (tpnl < 0)
+
         hard_flags = {
             "capital_at_risk_high": dd > dd_limit,
-            "overtrading": avg_trades > trade_limit,
+            "overtrading": is_overtrading,
             "negative_expectancy": pf < 1,
             "fragile_edge": 1 <= pf < 1.3,
             "emotional_instability": emo < 0.4,

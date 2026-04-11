@@ -51,13 +51,20 @@ class TradingDataProcessor:
             if pd.isna(start_date) or pd.isna(end_date):
                 return df
 
-            # Fetch relevant columns from DB
+            # Fetch relevant columns from DB - now expanded for consolidated trace sheet
             query = f"""
                 SELECT symbol, date, open, high, low, close, volume,
+                       dma_10, dma_21, dma_50, dma_100, 
+                       ema_10, ema_21, ema_50, ema_100, 
                        t_score, f_score, total_score,
                        is_52week_high, is_52week_low, is_alltime_high,
-                       is_alltime_low, is_event, atr, is_high_volume, is_news, news_category,
-                       market_behaviour, chart_charts, sector_ema
+                       is_alltime_low, macd, macd_signal, macd_histogram,
+                       rsi, k_percent, d_percent, j_percent, cci, roc,
+                       atr, atr_5, z_score_75, pvo, mfi, adx, adxr, 
+                       vwma, bb_middle, bb_upper, bb_lower,
+                       sma_50, sma_200, news_impactscore, is_news,
+                       is_event, is_high_volume, ema_score, news_sentiment,
+                       market_behaviour, news_category, chart_charts, sector_ema
                 FROM {table_name}
                 WHERE date >= %s AND date <= %s;
             """
@@ -207,8 +214,8 @@ class TradingDataProcessor:
                             new_trade[col] = np.nan
                             
                     new_trades.append(new_trade)
-                    self.logger.info(f"Adding synthetic expiry close for {symbol}: BUY {abs(net_qty)} @ 0.0 on {expiry_ts}")
-        
+                    # self.logger.info(f"Adding synthetic expiry close for {symbol}: BUY {abs(net_qty)} @ 0.0 on {expiry_ts}")
+        self.logger.info((f"Added all Sytheic tradess to close open positions of options expired"))
         if new_trades:
             # Append new trades and re-sort
             new_df = pd.DataFrame(new_trades)

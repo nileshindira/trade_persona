@@ -1,0 +1,108 @@
+<div class="card mb-4 shadow-sm border-0">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i>Comprehensive Trade Ledger</h5>
+        <span class="badge bg-secondary">{{ report.appendix.merged_trades|length }} Total Trades</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+            <table class="table table-hover table-sm mb-0" id="mergedTradeTable">
+                <thead class="bg-light sticky-top">
+                    <tr>
+                        <th>Date</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                        <th>Value</th>
+                        <th>P&L</th>
+                        <th>T-Score</th>
+                        <th>F-Score</th>
+                        <th>Sentiment</th>
+                        <th>Context</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trade in report.appendix.merged_trades %}
+                    {% set pnl = trade.realized_pnl or trade.pnl or 0 %}
+                    <tr class="{% if pnl > 0 %}table-success-light{% elif pnl < 0 %}table-danger-light{% endif %}">
+                        <td class="text-nowrap">{{ trade.trade_date }}</td>
+                        <td><strong>{{ trade.symbol }}</strong></td>
+                        <td>
+                            <span
+                                class="badge {% if trade.transaction_type == 'BUY' %}bg-info{% else %}bg-warning text-dark{% endif %}">
+                                {{ trade.transaction_type }}
+                            </span>
+                        </td>
+                        <td>{{ trade.quantity }}</td>
+                        <td>₹{{ trade.price|float|round(2) }}</td>
+                        <td>₹{{ (trade.trade_value or 0)|float|round(0) }}</td>
+                        <td
+                            class="{% if pnl > 0 %}text-success fw-bold{% elif pnl < 0 %}text-danger fw-bold{% endif %}">
+                            ₹{{ pnl|float|round(2) }}
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 40px;">
+                                <div class="progress-bar bg-primary" style="width: {{ trade.t_score * 10 }}%"></div>
+                            </div>
+                            <small class="text-muted">{{ trade.t_score }}</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 5px; width: 40px;">
+                                <div class="progress-bar bg-info" style="width: {{ trade.f_score * 10 }}%"></div>
+                            </div>
+                            <small class="text-muted">{{ trade.f_score }}</small>
+                        </td>
+                        <td>
+                            {% if trade.news_sentiment == 'Positive' %}
+                            <i class="fas fa-smile text-success" title="Positive"></i>
+                            {% elif trade.news_sentiment == 'Negative' %}
+                            <i class="fas fa-frown text-danger" title="Negative"></i>
+                            {% else %}
+                            <i class="fas fa-meh text-muted" title="Neutral"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if trade.is_event %}<span class="badge bg-purple">Event</span>{% endif %}
+                                {% if trade.is_news %}<span class="badge bg-dark">News</span>{% endif %}
+                                {% if trade.is_high_volume %}<span class="badge bg-secondary">Vol</span>{% endif %}
+                                {{ trade.market_behaviour or '' }}
+                            </small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-light py-2">
+        <small class="text-muted">
+            <i class="fas fa-info-circle me-1"></i>
+            Showing top <strong>{{ report.appendix.merged_trades|length }}</strong> trades for performance.
+            Full forensic ledger is saved in the accompanying CSV file.
+        </small>
+    </div>
+</div>
+
+<style>
+    .table-success-light {
+        background-color: rgba(40, 167, 69, 0.05) !important;
+    }
+
+    .table-danger-light {
+        background-color: rgba(220, 53, 69, 0.05) !important;
+    }
+
+    .bg-purple {
+        background-color: #6f42c1;
+        color: white;
+    }
+
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: white;
+        box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+</style>

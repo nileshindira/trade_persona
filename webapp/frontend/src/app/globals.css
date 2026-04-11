@@ -1,0 +1,82 @@
+:root {
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --card-bg: #161b22;
+  --border-color: #30363d;
+  --primary-blue: #58a6ff;
+  --primary-green: #238636;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.dashboard-container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.dark-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.metric-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: var(--primary-blue);
+}
+
+.text-success {
+  color: #3fb950 !important;
+}
+
+.text-danger {
+  color: #f85149 !important;
+}
+
+.text-primary {
+  color: var(--primary-blue) !important;
+}
+
+.bg-primary {
+  background-color: #1f6feb !important;
+}
+
+.btn-primary {
+  background-color: var(--primary-green);
+  border-color: #2ea043;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background-color: #2ea043;
+}
+
+.font-outfit {
+  font-family: var(--font-outfit);
+}
+
+canvas {
+  max-width: 100%;
+}

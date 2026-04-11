@@ -1,0 +1,381 @@
+<div class="col-12 mt-4" id="consolidatedTraceSection">
+    <div class="card border-0 shadow-sm metric-card">
+        <div
+            class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <h5 class="mb-0 fw-bold d-flex align-items-center">
+                <i class="bi bi-list-columns-reverse text-ag-primary me-2"></i>
+                Forensic Trade Trace & Consolidated Performance Sheet
+            </h5>
+            <div class="d-flex gap-2 flex-wrap">
+                <div class="input-group input-group-sm" style="width: 250px;">
+                    <span class="input-group-text bg-light text-muted border-end-0">
+                        <i class="bi bi-funnel"></i>
+                    </span>
+                    <select class="form-select border-start-0 ps-0" id="patternFilter"
+                        onchange="filterTraceByPattern()">
+                        <option value="all">All Forensic Entries</option>
+                        <option value="revenge">Revenge Trading</option>
+                        <option value="fomo">FOMO Trades</option>
+                        <option value="overtrading">Over-trading Sessions</option>
+                        <option value="asl">Absence of Stop-Loss</option>
+                        <option value="loss_avg">Loss Averaging</option>
+                        <option value="win_streak">Consecutive Wins</option>
+                        <option value="loss_streak">Consecutive Losses</option>
+                        <option value="any">Any Pattern</option>
+                    </select>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="exportTraceToCSV()">
+                    <i class="bi bi-download me-1"></i> Export Sheet
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 800px; overflow-y: auto;">
+                <table class="table table-hover align-middle mb-0" id="consolidatedTraceTable"
+                    style="font-size: 0.78rem; white-space: nowrap;">
+                    <thead class="bg-light sticky-top shadow-sm" style="z-index: 10;">
+                        <tr>
+                            <th class="ps-4">Trade Date</th>
+                            <th onclick="sortTable(1)" style="cursor: pointer;" title="Click to Sort">
+                                Symbol <i class="bi bi-arrow-down-up ms-1 small text-muted"></i>
+                            </th>
+                            <th>Side</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">Charges</th>
+                            <th class="text-end" onclick="sortTable(7)" style="cursor: pointer;" title="Click to Sort">
+                                PnL <i class="bi bi-arrow-down-up ms-1 small text-muted"></i>
+                            </th>
+                            <th class="text-end" onclick="sortTable(8)" style="cursor: pointer;" title="Click to Sort">
+                                PnL % <i class="bi bi-arrow-down-up ms-1 small text-muted"></i>
+                            </th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Eff. (E/E)</th>
+                            <th class="text-center">Timing</th>
+                            <th class="text-center">Mae/DD</th>
+                            <th class="text-center">Streak</th>
+                            <th class="text-center text-ag-primary">Forensic Pattern</th>
+
+                            <!-- DB Technicals -->
+                            <th class="bg-gray-100">Open</th>
+                            <th class="bg-gray-100">High</th>
+                            <th class="bg-gray-100">Low</th>
+                            <th class="bg-gray-100">Close</th>
+                            <th class="bg-gray-100">Volume</th>
+
+                            <!-- DMA/EMA -->
+                            <th>DMA 10/21/50/100</th>
+                            <th>EMA 10/21/50/100</th>
+
+                            <!-- Scores -->
+                            <th>T-Score</th>
+                            <th>F-Score</th>
+                            <th>Total Score</th>
+
+                            <!-- Performance Flags -->
+                            <th>52W H/L</th>
+                            <th>ATH/ATL</th>
+
+                            <!-- Advanced Tech -->
+                            <th>MACD/Signal/Hist</th>
+                            <th>RSI</th>
+                            <th>K/D/J %</th>
+                            <th>CCI</th>
+                            <th>ROC</th>
+                            <th>ATR/ATR5</th>
+                            <th>Z-75</th>
+                            <th>PVO/MFI</th>
+                            <th>ADX/ADXR</th>
+                            <th>VWMA</th>
+                            <th>BB Up/Mid/Low</th>
+                            <th>SMA 50/200</th>
+
+                            <!-- Contextual -->
+                            <th>Market Behaviour</th>
+                            <th>EMA Score</th>
+                            <th>News Sentiment</th>
+                            <th>Impact Score</th>
+                            <th>Category</th>
+                            <th>Is News/Event</th>
+                            <th>High Volume</th>
+
+                            <!-- AI & Strategy -->
+                            <th class="bg-light-blue">Indira Suggestion</th>
+                            <th class="bg-light-blue">Sector Alternate</th>
+                            <th class="bg-light-blue">RL Reasoning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report.appendix.consolidated_trace %}
+                        {% set patterns_list = row.pattern.lower().split(', ') %}
+                        <tr class="trace-row {{ 'bg-light-danger-subtle' if row.pnl < 0 else '' }}"
+                            data-patterns="{{ row.pattern|lower }}" data-win-streak="{{ row.win_streak }}"
+                            data-loss-streak="{{ row.loss_streak }}">
+                            <td class="ps-4 text-muted small">{{ row.trade_date }}</td>
+                            <td><span class="fw-bold">{{ row.symbol }}</span></td>
+                            <td>
+                                <span
+                                    class="badge {{ 'bg-success-subtle text-success' if row.transaction_type == 'BUY' else 'bg-danger-subtle text-danger' }}"
+                                    style="font-size: 0.65rem;">
+                                    {{ row.transaction_type }}
+                                </span>
+                            </td>
+                            <td class="text-end font-monospace">{{ row.quantity }}</td>
+                            <td class="text-end font-monospace">₹{{ '{:,.2f}'.format(row.price) }}</td>
+                            <td class="text-end font-monospace">₹{{ '{:,.0f}'.format(row.trade_value) }}</td>
+                            <td class="text-end font-monospace text-muted">₹{{ '{:,.1f}'.format(row.charges) }}</td>
+                            <td class="text-end fw-bold {{ 'text-ag-success' if row.pnl > 0 else ('text-ag-danger' if row.pnl < 0 else 'text-muted') }}"
+                                data-sort-val="{{ row.pnl }}">
+                                ₹{{ '{:,.0f}'.format(row.pnl) }}
+                            </td>
+                            <td class="text-end font-monospace {{ 'text-success' if row.pnl_pct > 0 else ('text-danger' if row.pnl_pct < 0 else 'text-muted') }}"
+                                data-sort-val="{{ row.pnl_pct }}">
+                                {{ '{:,.2f}%'.format(row.pnl_pct) if row.pnl_pct is not none else '0.00%' }}
+                            </td>
+                            <td class="text-center">
+                                {% if row.pnl < 0 %} <i class="bi bi-x-circle-fill text-danger"
+                                    title="Loss Making Trade"></i>
+                                    {% elif row.pnl > 0 %}
+                                    <i class="bi bi-check-circle-fill text-success" title="Profit Making Trade"></i>
+                                    {% else %}
+                                    <i class="bi bi-dash-circle text-muted"></i>
+                                    {% endif %}
+                            </td>
+                            <td class="text-center fw-bold">{{ row["Efficiency(Entry/Exit)"] }}</td>
+                            <td class="text-center">{{ row["Timing Efficiecny"] }}</td>
+                            <td class="text-center text-danger small">{{ row.max_drawdown_on_trade }}</td>
+                            <td class="text-center">
+                                {% if row.win_streak > 1 %}
+                                <span class="badge rounded-pill bg-success" title="Win Streak">W{{ row.win_streak
+                                    }}</span>
+                                {% elif row.loss_streak > 1 %}
+                                <span class="badge rounded-pill bg-danger" title="Loss Streak">L{{ row.loss_streak
+                                    }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row.pattern and row.pattern != 'No Pattern' %}
+                                {% for p in row.pattern.split(', ') %}
+                                <span class="badge bg-warning text-dark mb-1"
+                                    style="font-size: 0.62rem; display: block;">
+                                    {{ p }}
+                                </span>
+                                {% endfor %}
+                                {% else %}
+                                <span class="text-muted small">No Pattern</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- DB Technicals -->
+                            <td class="bg-gray-100">{{ row.open }}</td>
+                            <td class="bg-gray-100">{{ row.high }}</td>
+                            <td class="bg-gray-100">{{ row.low }}</td>
+                            <td class="bg-gray-100">{{ row.close }}</td>
+                            <td class="bg-gray-100 small">{{ '{:,.0f}'.format(row.volume) }}</td>
+
+                            <td class="small text-muted">10:{{ row.dma_10|float|round(1) }} | 21:{{
+                                row.dma_21|float|round(1) }} |
+                                50:{{ row.dma_50|float|round(1) }} | 100:{{ row.dma_100|float|round(1) }}</td>
+                            <td class="small text-muted">10:{{ row.ema_10|float|round(1) }} | 21:{{
+                                row.ema_21|float|round(1) }} |
+                                50:{{ row.ema_50|float|round(1) }} | 100:{{ row.ema_100|float|round(1) }}</td>
+
+                            <td class="text-center font-monospace">{{ row.t_score }}</td>
+                            <td class="text-center font-monospace">{{ row.f_score }}</td>
+                            <td class="text-center fw-bold">{{ row.total_score }}</td>
+
+                            <td>
+                                {{ "52WH" if row.is_52week_high else "" }}
+                                {{ "52WL" if row.is_52week_low else "" }}
+                            </td>
+                            <td>
+                                {{ "ATH" if row.is_alltime_high else "" }}
+                                {{ "ATL" if row.is_alltime_low else "" }}
+                            </td>
+
+                            <td class="small">{{ row.macd|float|round(1) }} / {{ row.macd_signal|float|round(1) }} / {{
+                                row.macd_histogram|float|round(1) }}</td>
+                            <td>{{ row.rsi|float|round(1) if row.rsi is defined else row.rsi }}</td>
+                            <td class="small">{{ row.k_percent|float|round(1) }} / {{ row.d_percent|float|round(1) }} /
+                                {{
+                                row.j_percent|float|round(1) }}</td>
+                            <td>{{ row.cci|float|round(1) }}</td>
+                            <td>{{ row.roc|float|round(1) }}</td>
+                            <td class="small">{{ row.atr|float|round(2) }} / {{ row.atr_5|float|round(2) }}</td>
+                            <td>{{ row.z_score_75|float|round(2) }}</td>
+                            <td class="small">{{ row.pvo|float|round(1) }} / {{ row.mfi|float|round(1) }}</td>
+                            <td class="small">{{ row.adx|float|round(1) }} / {{ row.adxr|float|round(1) }}</td>
+                            <td>{{ row.vwma|float|round(1) }}</td>
+                            <td class="small text-muted">{{ row.bb_upper|float|round(1) }} / {{
+                                row.bb_middle|float|round(1) }} / {{
+                                row.bb_lower|float|round(1) }}</td>
+                            <td class="small">{{ row.sma_50|float|round(1) }} / {{ row.sma_200|float|round(1) }}</td>
+
+                            <td>{{ row.market_behaviour }}</td>
+                            <td class="text-center">{{ row.ema_score }}</td>
+                            <td class="text-center">{{ row.news_sentiment|float|round(2) }}</td>
+                            <td class="text-center">{{ row.news_impactscore|float|round(1) }}</td>
+                            <td class="small">{{ row.news_category }}</td>
+                            <td class="text-center">
+                                {{ "News" if row.is_news else "" }}
+                                {{ "Event" if row.is_event else "" }}
+                            </td>
+                            <td class="text-center">{{ "High" if row.is_high_volume else "-" }}</td>
+
+                            <td class="bg-light-blue small" style="min-width: 250px;">{{ row["Indira_suggestion on the
+                                stock"] }}</td>
+                            <td class="bg-light-blue fw-bold text-primary">{{ row["Any other stock in this sector ,
+                                performed better"] }}</td>
+                            <td class="bg-light-blue small" style="min-width: 250px;">{{ row.Rl_Reasoning }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 bg-light border-top d-flex justify-content-between align-items-center">
+                <span class="text-muted small" id="traceTableStatus">
+                    Showing top <strong>{{ report.appendix.consolidated_trace|length }}</strong> forensic entries in
+                    HTML view.
+                </span>
+                <span class="text-muted small">DNA Alignment verified by Indira Behavioral Auditor</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-light-danger-subtle {
+        background-color: rgba(220, 53, 69, 0.03) !important;
+    }
+
+    .bg-light-blue {
+        background-color: rgba(0, 123, 255, 0.03) !important;
+    }
+
+    .bg-gray-100 {
+        background-color: #f8f9fa !important;
+    }
+
+    #consolidatedTraceTable th {
+        border-bottom: 2px solid #dee2e6;
+        vertical-align: middle;
+    }
+
+    #consolidatedTraceTable td {
+        border-bottom: 1px solid #f1f1f1;
+    }
+
+    .row-highlight {
+        background-color: rgba(255, 193, 7, 0.1) !important;
+        border-left: 4px solid #ffc107 !important;
+    }
+</style>
+
+<script>
+    let sortDirections = {};
+
+    function sortTable(columnIndex) {
+        const table = document.getElementById("consolidatedTraceTable");
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+
+        // Toggle direction
+        sortDirections[columnIndex] = !sortDirections[columnIndex];
+        const isAscending = sortDirections[columnIndex];
+
+        rows.sort((a, b) => {
+            let aCell = a.cells[columnIndex];
+            let bCell = b.cells[columnIndex];
+
+            let aVal = aCell.getAttribute("data-sort-val") || aCell.innerText.trim();
+            let bVal = bCell.getAttribute("data-sort-val") || bCell.innerText.trim();
+
+            // Handle numbers
+            if (!isNaN(parseFloat(aVal)) && !isNaN(parseFloat(bVal))) {
+                return isAscending ? parseFloat(aVal) - parseFloat(bVal) : parseFloat(bVal) - parseFloat(aVal);
+            }
+
+            // Handle strings
+            return isAscending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+
+        // Re-append rows
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function filterTraceByPattern() {
+        const filterVal = document.getElementById('patternFilter').value;
+        const rows = document.querySelectorAll('.trace-row');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const patterns = row.getAttribute('data-patterns') || '';
+            const winStreak = parseInt(row.getAttribute('data-win-streak') || '0');
+            const lossStreak = parseInt(row.getAttribute('data-loss-streak') || '0');
+            let showRow = false;
+
+            if (filterVal === 'all') {
+                showRow = true;
+            } else if (filterVal === 'any') {
+                showRow = (patterns !== 'no pattern' && patterns !== '') || winStreak > 1 || lossStreak > 1;
+            } else if (filterVal === 'revenge') {
+                showRow = patterns.includes('revenge');
+            } else if (filterVal === 'fomo') {
+                showRow = patterns.includes('fomo');
+            } else if (filterVal === 'overtrading') {
+                showRow = patterns.includes('overtrading');
+            } else if (filterVal === 'asl') {
+                showRow = patterns.includes('absence of stop_loss') || patterns.includes('absence of stop loss');
+            } else if (filterVal === 'loss_avg') {
+                showRow = patterns.includes('loss averaging');
+            } else if (filterVal === 'win_streak') {
+                showRow = winStreak > 1;
+            } else if (filterVal === 'loss_streak') {
+                showRow = lossStreak > 1;
+            }
+
+            if (showRow) {
+                row.style.display = '';
+                visibleCount++;
+                if (filterVal !== 'all') {
+                    row.classList.add('row-highlight');
+                } else {
+                    row.classList.remove('row-highlight');
+                }
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        document.getElementById('traceTableStatus').innerHTML = `Showing <strong>${visibleCount}</strong> filtered entries match the criteria.`;
+    }
+
+    function exportTraceToCSV() {
+        const table = document.getElementById('consolidatedTraceTable');
+        const rows = table.querySelectorAll('tr');
+        let csv = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            if (rows[i].style.display === 'none') continue; // Only export filtered rows
+            const row = [], cols = rows[i].querySelectorAll('td, th');
+            for (let j = 0; j < cols.length; j++) {
+                let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, '').replace(/(\s\s+)/gm, ' ');
+                data = data.replace(/"/g, '""');
+                row.push('"' + data + '"');
+            }
+            csv.push(row.join(','));
+        }
+
+        const csvContent = "data:text/csv;charset=utf-8," + csv.join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `trade_trace_filtered_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>

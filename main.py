@@ -9,6 +9,7 @@ import logging
 import argparse
 from pathlib import Path
 import sys
+import webbrowser
 
 from src.data_processor import TradingDataProcessor
 from src.metrics_calculator import TradingMetricsCalculator
@@ -18,6 +19,11 @@ from src.report_generator import ReportGenerator
 from src.ema_calculator import EMACalculator
 from datetime import datetime, date
 import numpy as np
+import colorama
+from colorama import Fore, Style
+
+# Initialize colorama
+colorama.init()
 
 # Setup logging
 logging.basicConfig(
@@ -96,22 +102,17 @@ class TradingPersonaAnalyzer:
         #         logger.error(f"Error calculating EMA scores: {str(e)}")
         #         logger.warning("Continuing analysis without EMA scores")
         #
-        # Step 2: Calculate metrics
-        logger.info("Calculating metrics...")
-        metrics = self.metrics_calculator.calculate_all_metrics(df, pnl_csv, nifty_data=nifty_chart_data)
-
-
-        # # Add EMA stats to metrics if available
-        # if ema_stats:
-        #     metrics['ema_allocation'] = ema_stats
-        #
-        # Step 3: Detect patterns
+        # Step 2: Detect patterns
         logger.info("Detecting patterns...")
         patterns = self.pattern_detector.detect_all_patterns(df)
 
+        # Step 3: Calculate metrics (now with patterns for trace sheet)
+        logger.info("Calculating metrics...")
+        metrics = self.metrics_calculator.calculate_all_metrics(df, pnl_csv, nifty_data=nifty_chart_data, patterns=patterns)
+
         # Step 4: LLM Analysis
         logger.info("Generating AI analysis...")
-        analysis = self.llm_analyzer.generate_analysis(metrics, patterns, df)
+        analysis = self.llm_analyzer.generate_analysis(metrics, patterns, df, trader_name=trader_name)
 
         # add nifty data chart in analysis['web_data']['nifty_pnl_timeline']->[date]['values']
         # --- Normalize PNL & NIFTY values to 100 scale
@@ -147,12 +148,52 @@ class TradingPersonaAnalyzer:
 
 
 
+        # Step 4.5: Load Proposed Trade File (if exists)
+        proposed_trades = []
+        proposed_csv_path = Path("TRADE_FILES/Proposed_Trade_File.csv")
+        if proposed_csv_path.exists():
+            try:
+                # Load with pandas to handle comma/separator issues
+                pt_df = pd.read_csv(proposed_csv_path)
+                
+                # 🔥 FIX: Merge PnL from the paired trades dataframe if missing
+                if 'pnl' not in pt_df.columns and not df.empty:
+                    # Create a lookup map for faster merging: (symbol, date_str) -> pnl
+                    try:
+                        # Normalize dates to string format found in Proposed file for matching
+                        df_lookup = df.copy()
+                        df_lookup['dt_match'] = pd.to_datetime(df_lookup['trade_date']).dt.strftime('%d-%m-%Y %H:%M')
+                        pnl_map = df_lookup.groupby(['symbol', 'dt_match'])['pnl'].sum().to_dict()
+                        
+                        def lookup_pnl(row):
+                            # Try to find exact match on symbol and date
+                            key = (row.get('symbol'), str(row.get('trade_date')).strip())
+                            return pnl_map.get(key, 0.0)
+                        
+                        pt_df['pnl'] = pt_df.apply(lookup_pnl, axis=1)
+                        logger.info("Successfully merged PnL into Proposed Trades from paired trade data.")
+                    except Exception as e:
+                        logger.warning(f"Failed to merge PnL into Proposed Trades: {e}. Defaulting to 0.")
+                        pt_df['pnl'] = 0.0
+                
+                # Final safety: Ensure every row has 'pnl' even if merge failed
+                if 'pnl' not in pt_df.columns:
+                    pt_df['pnl'] = 0.0
+
+                # Convert to records for Jinja2
+                proposed_trades = pt_df.to_dict('records')
+                logger.info(f"Loaded {len(proposed_trades)} proposed trades for report.")
+            except Exception as e:
+                logger.error(f"Error loading Proposed_Trade_File.csv: {e}")
+
         # Step 5: Generate report
         logger.info("Generating report...")
 
         report = self.report_generator.generate_report(
             metrics, patterns, analysis, trader_name
         )
+        # Add proposed trades to report data
+        report["appendix"]["proposed_trades"] = proposed_trades
 
         # Step 6: Export report
         output_path = Path(output_dir)
@@ -167,6 +208,14 @@ class TradingPersonaAnalyzer:
         html_path = output_path / f"{trader_name}_report.html"
         self.report_generator.export_html(report, str(html_path))
         logger.info(f"HTML report saved to {html_path}")
+
+        # Export consolidated trace CSV
+        trace_data = metrics.get('consolidated_trace', [])
+        if trace_data:
+            trace_df = pd.DataFrame(trace_data)
+            trace_csv_path = output_path / f"{trader_name}_consolidated_trace.csv"
+            trace_df.to_csv(trace_csv_path, index=False)
+            logger.info(f"Consolidated Trace Sheet saved to {trace_csv_path}")
 
         # # Export enriched CSV with EMA scores
         # if include_ema and self.ema_enabled:
@@ -191,12 +240,21 @@ def main():
     analyzer = TradingPersonaAnalyzer(args.config)
     pnl_csv = args.pnl_csv
 
+    # Automatic discovery of P&L file if not provided, except for Gourav
+    if not pnl_csv and args.trader_name != "Gourav":
+        data_path = Path(args.data_file)
+        # Try finding [Trader]_MTM.csv in the same directory as the data file
+        possible_pnl = data_path.parent / f"{args.trader_name}_MTM.csv"
+        if possible_pnl.exists():
+            pnl_csv = str(possible_pnl)
+            print(f"Automatically discovered P&L file: {pnl_csv}")
+
     report = analyzer.analyze(
         args.data_file,
         args.trader_name,
         args.output_dir,
         include_ema=not args.no_ema,
-        pnl_csv=args.pnl_csv
+        pnl_csv=pnl_csv
     )
 
     if report:
@@ -221,7 +279,18 @@ def main():
             print(f"Nifty EMA (Avg): {ema_stats['nifty_ema']['mean']:.2f}")
             print(f"Midcap EMA (Avg): {ema_stats['midcap_ema']['mean']:.2f}")
 
+        # Display Multivariate Pattern Matrices
+        mvp_data = metrics_dict.get('multivariate_pattern_analysis', [])
+
         print("\nReports generated successfully!")
+        
+        # Automatically open the report
+        try:
+            report_path = Path(args.output_dir).absolute() / f"{args.trader_name}_report.html"
+            print(f"Opening report: {report_path}")
+            webbrowser.open(f"file://{report_path}")
+        except Exception as e:
+            print(f"Could not open browser: {e}")
     else:
         print("Analysis failed!")
         sys.exit(1)

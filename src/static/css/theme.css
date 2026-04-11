@@ -1,0 +1,1104 @@
+/* =====================================================
+   ANTIGRAVITY TRADE PERSONA — DESIGN SYSTEM (theme.css)
+   Single source of truth. No inline styles elsewhere.
+   ===================================================== */
+
+/* ─── 1. DESIGN TOKENS ─────────────────────────────── */
+:root {
+    /* Brand */
+    --ag-primary: #6366f1;
+    --ag-primary-dark: #4338ca;
+    --ag-primary-light: #e0e7ff;
+    --ag-success: #10b981;
+    --ag-success-light: #d1fae5;
+    --ag-danger: #ef4444;
+    --ag-danger-light: #fee2e2;
+    --ag-warning: #f59e0b;
+    --ag-warning-light: #fef3c7;
+    --ag-info: #3b82f6;
+    --ag-info-light: #dbeafe;
+
+    /* Surfaces */
+    --ag-bg: #f8fafc;
+    --ag-bg-dot: #e2e8f0;
+    --ag-card: #ffffff;
+    --ag-card-alt: #f1f5f9;
+    --ag-border: #e2e8f0;
+    --ag-border-light: #f1f5f9;
+
+    /* Text */
+    --ag-text: #1e293b;
+    --ag-text-muted: #64748b;
+    --ag-text-faint: #94a3b8;
+
+    /* Layout */
+    --ag-radius: 1rem;
+    --ag-radius-sm: 0.5rem;
+    --ag-radius-xs: 0.375rem;
+    --ag-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+    --ag-shadow-md: 0 6px 24px -4px rgba(0, 0, 0, 0.10);
+    --ag-shadow-lg: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
+
+    /* Typography */
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-heading: 'Outfit', system-ui, sans-serif;
+}
+
+/* ─── 2. RESET / BASE ────────────────────────────────── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    background: var(--ag-bg);
+    background-image: radial-gradient(var(--ag-bg-dot) 0.5px, transparent 0.5px);
+    background-size: 20px 20px;
+    color: var(--ag-text);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ag-text);
+    line-height: 1.2;
+}
+
+a {
+    color: var(--ag-primary);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.text-ag-success {
+    color: var(--ag-success) !important;
+}
+
+.text-ag-danger {
+    color: var(--ag-danger) !important;
+}
+
+.text-ag-primary {
+    color: var(--ag-primary) !important;
+}
+
+.text-ag-muted {
+    color: var(--ag-text-muted) !important;
+}
+
+/* ─── 3. LAYOUT ─────────────────────────────────────── */
+.ag-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+/* ─── 4. ANIMATIONS ─────────────────────────────────── */
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-in-up.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ─── 5. HERO SECTION ────────────────────────────────── */
+.ag-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a5f 100%);
+    color: white;
+    padding: 4rem 3rem 3rem;
+    border-radius: var(--ag-radius);
+    text-align: center;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--ag-shadow-lg);
+}
+
+.ag-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('https://www.transparenttextures.com/patterns/carbon-fibre.png');
+    opacity: 0.04;
+    pointer-events: none;
+}
+
+.ag-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.ag-hero-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ag-primary-light);
+    opacity: 0.8;
+    margin-bottom: 0.75rem;
+}
+
+.ag-hero-name {
+    font-size: clamp(2.5rem, 5vw, 3.75rem);
+    font-weight: 800;
+    color: white;
+    margin-bottom: 0.25rem;
+}
+
+.ag-hero-persona {
+    font-size: 1.35rem;
+    font-weight: 500;
+    color: var(--ag-primary-light);
+    opacity: 0.85;
+    margin-bottom: 1.25rem;
+}
+
+.ag-hero-headline {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 700px;
+    margin: 0 auto 2.5rem;
+    line-height: 1.6;
+}
+
+/* Hero Topline Grid */
+.ag-topline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.ag-topline-item {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--ag-radius-sm);
+    padding: 1.25rem 1rem;
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.ag-topline-item:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.ag-topline-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 0.4rem;
+    display: block;
+}
+
+.ag-topline-value {
+    font-family: var(--font-heading);
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+/* ─── 6. STICKY NAV ──────────────────────────────────── */
+.ag-sticky-nav {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(16px);
+    border-radius: 50px;
+    padding: 0.4rem;
+    box-shadow: var(--ag-shadow-md);
+    margin-bottom: 3.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.ag-sticky-nav .nav-pills .nav-link {
+    border-radius: 50px;
+    color: var(--ag-text-muted);
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 0.5rem 1.25rem;
+    transition: all 0.2s ease;
+}
+
+.ag-sticky-nav .nav-pills .nav-link:hover {
+    background: var(--ag-card-alt);
+    color: var(--ag-text);
+}
+
+.ag-sticky-nav .nav-pills .nav-link.active-section {
+    background: var(--ag-primary) !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+/* ─── 7. SECTION LAYOUT ─────────────────────────────── */
+.ag-section {
+    scroll-margin-top: 90px;
+    margin-bottom: 5rem;
+}
+
+.ag-section-eyebrow {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ag-text-faint);
+    margin-bottom: 0.3rem;
+}
+
+.ag-section-title {
+    font-family: var(--font-heading);
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--ag-text);
+    margin-bottom: 0;
+}
+
+/* ─── 8. CARDS ───────────────────────────────────────── */
+.ag-card {
+    background: var(--ag-card);
+    border: 1px solid var(--ag-border-light);
+    border-radius: var(--ag-radius);
+    box-shadow: var(--ag-shadow);
+    padding: 1.75rem;
+    height: 100%;
+}
+
+.h-auto {
+    height: auto !important;
+}
+
+.ag-card--primary {
+    border-left: 5px solid var(--ag-primary);
+}
+
+.ag-card--success {
+    border-left: 5px solid var(--ag-success);
+}
+
+.ag-card--danger {
+    border-left: 5px solid var(--ag-danger);
+}
+
+.ag-card--warning {
+    border-left: 5px solid var(--ag-warning);
+}
+
+.ag-card--dark {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: white;
+    border: none;
+}
+
+/* Clickable hover card */
+.ag-card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ag-card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--ag-shadow-md);
+}
+
+/* ─── 9. METRIC CHIPS ────────────────────────────────── */
+.ag-chip {
+    background: var(--ag-card-alt);
+    border: 1px solid var(--ag-border-light);
+    border-radius: var(--ag-radius-sm);
+    padding: 1rem 1.1rem;
+    height: 100%;
+    transition: border-color 0.2s;
+}
+
+.ag-chip:hover {
+    border-color: var(--ag-primary-light);
+}
+
+.ag-chip--success {
+    background: var(--ag-success-light);
+    border-color: #6ee7b7;
+}
+
+.ag-chip--danger {
+    background: var(--ag-danger-light);
+    border-color: #fca5a5;
+}
+
+.ag-chip--dark {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.ag-chip-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ag-text-muted);
+    margin-bottom: 0.3rem;
+    display: block;
+}
+
+.ag-chip--dark .ag-chip-label {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.ag-chip-value {
+    font-family: var(--font-heading);
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--ag-text);
+    line-height: 1.15;
+}
+
+.ag-chip--dark .ag-chip-value {
+    color: white;
+}
+
+.ag-chip-sub {
+    font-size: 0.65rem;
+    color: var(--ag-text-faint);
+    margin-top: 0.2rem;
+    line-height: 1.3;
+}
+
+/* Compact grid for chips */
+.ag-chip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.ag-chip-grid--3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ─── 10. TAGS / BADGES ─────────────────────────────── */
+.ag-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.3rem 0.8rem;
+    border-radius: 2rem;
+    margin-bottom: 0.6rem;
+}
+
+.ag-tag--primary {
+    background: var(--ag-primary-light);
+    color: var(--ag-primary-dark);
+}
+
+.ag-tag--success {
+    background: var(--ag-success-light);
+    color: #065f46;
+}
+
+.ag-tag--danger {
+    background: var(--ag-danger-light);
+    color: #991b1b;
+}
+
+.ag-tag--warning {
+    background: var(--ag-warning-light);
+    color: #92400e;
+}
+
+.ag-tag--info {
+    background: var(--ag-info-light);
+    color: #1e40af;
+}
+
+.ag-tag--muted {
+    background: var(--ag-card-alt);
+    color: var(--ag-text-muted);
+}
+
+/* ─── 11. DIAGNOSIS / PERSONA CARDS ─────────────────── */
+.ag-narrative {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--ag-text);
+}
+
+.ag-evidence-box {
+    background: var(--ag-card-alt);
+    border: 1px dashed var(--ag-border);
+    border-radius: var(--ag-radius-sm);
+    padding: 0.85rem 1rem;
+    font-size: 0.82rem;
+    color: var(--ag-text-muted);
+    margin-top: 0.75rem;
+}
+
+/* Risk profile bars */
+.ag-risk-bar-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.ag-risk-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--ag-primary);
+    transition: width 1s ease;
+}
+
+/* Archetype badge */
+.ag-archetype-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 99px;
+    padding: 0.4rem 1.1rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ag-primary);
+}
+
+/* Trade DNA grid */
+.ag-dna-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1.5rem;
+}
+
+.ag-dna-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ag-dna-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.5;
+}
+
+.ag-dna-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+/* ─── 12. STRENGTH / MISTAKE CARDS ──────────────────── */
+.ag-strength-card {
+    border-left: 4px solid var(--ag-success);
+    padding: 1.5rem;
+    border-radius: var(--ag-radius);
+    background: var(--ag-card);
+    box-shadow: var(--ag-shadow);
+    height: 100%;
+}
+
+.ag-mistake-card {
+    border-left: 4px solid var(--ag-danger);
+    padding: 1.5rem;
+    border-radius: var(--ag-radius);
+    background: var(--ag-card);
+    box-shadow: var(--ag-shadow);
+    height: 100%;
+}
+
+.ag-fix-box {
+    background: var(--ag-danger-light);
+    border: 1px solid #fca5a5;
+    border-radius: var(--ag-radius-sm);
+    padding: 0.85rem 1rem;
+    font-size: 0.82rem;
+    margin-top: 1rem;
+}
+
+.ag-leverage-box {
+    background: var(--ag-success-light);
+    border: 1px solid #6ee7b7;
+    border-radius: var(--ag-radius-sm);
+    padding: 0.85rem 1rem;
+    font-size: 0.82rem;
+    margin-top: 1rem;
+}
+
+/* Pressure / cognitive bias pills */
+.ag-bias-pill {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--ag-card-alt);
+    border-radius: var(--ag-radius-sm);
+    border: 1px solid var(--ag-border-light);
+}
+
+.ag-bias-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* ─── 13. ROADMAP / IMPROVEMENT PLAN ────────────────── */
+.ag-plan-card-primary {
+    background: linear-gradient(135deg, var(--ag-primary) 0%, var(--ag-primary-dark) 100%);
+    color: white;
+    border-radius: var(--ag-radius);
+    padding: 2rem;
+    height: 100%;
+    box-shadow: var(--ag-shadow-lg);
+}
+
+.ag-plan-card-neutral {
+    background: var(--ag-card);
+    border-radius: var(--ag-radius);
+    padding: 2rem;
+    height: 100%;
+    box-shadow: var(--ag-shadow);
+}
+
+.ag-plan-card-dark {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: white;
+    border-radius: var(--ag-radius);
+    padding: 2rem;
+    height: 100%;
+    box-shadow: var(--ag-shadow-lg);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+}
+
+.ag-plan-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+}
+
+.ag-plan-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.ag-plan-card-primary .ag-plan-icon {
+    background: rgba(255, 255, 255, 0.18);
+    color: white;
+}
+
+.ag-plan-card-neutral .ag-plan-icon {
+    background: var(--ag-primary-light);
+    color: var(--ag-primary);
+}
+
+/* Transformation forecast cards */
+.ag-uplift-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--ag-radius-sm);
+    padding: 1.5rem;
+    height: 100%;
+    transition: transform 0.2s ease;
+}
+
+.ag-uplift-card:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ─── 14. EVIDENCE LEDGER ────────────────────────────── */
+.ag-evidence-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0.4rem;
+}
+
+.ag-evidence-table th {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ag-text-faint);
+    font-weight: 700;
+    padding: 0.5rem 1rem;
+}
+
+.ag-evidence-table td {
+    background: var(--ag-card);
+    padding: 1rem 1rem;
+    border-top: 1px solid var(--ag-border-light);
+    border-bottom: 1px solid var(--ag-border-light);
+}
+
+.ag-evidence-table tr td:first-child {
+    border-left: 1px solid var(--ag-border-light);
+    border-radius: var(--ag-radius-sm) 0 0 var(--ag-radius-sm);
+}
+
+.ag-evidence-table tr td:last-child {
+    border-right: 1px solid var(--ag-border-light);
+    border-radius: 0 var(--ag-radius-sm) var(--ag-radius-sm) 0;
+}
+
+/* ─── 15. CUSTOM TABLES ────────────────────────────── */
+.ag-table {
+    border-radius: var(--ag-radius-sm);
+    overflow: hidden;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.ag-table thead th {
+    background: var(--ag-card-alt) !important;
+    border: none;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.85rem 1rem;
+    color: var(--ag-text-muted);
+}
+
+.ag-table tbody td {
+    padding: 0.85rem 1rem;
+    border-color: var(--ag-border-light);
+}
+
+.ag-table tr:last-child td:first-child {
+    border-bottom-left-radius: var(--ag-radius-sm);
+}
+
+.ag-table tr:last-child td:last-child {
+    border-bottom-right-radius: var(--ag-radius-sm);
+}
+
+/* ─── 15. METRICS DASHBOARD ──────────────────────────── */
+.metrics-block,
+.card-finance {
+    background: var(--ag-card);
+    border-radius: var(--ag-radius);
+    padding: 1.5rem;
+    box-shadow: var(--ag-shadow);
+    border: 1px solid var(--ag-border-light);
+    margin-bottom: 1rem;
+}
+
+.metrics-block-header {
+    margin-bottom: 0.75rem;
+}
+
+.metrics-block-header h5,
+.metrics-block-header h6 {
+    margin-bottom: 0.2rem;
+}
+
+.block-subtext {
+    font-size: 0.78rem;
+    color: var(--ag-text-muted);
+    margin-bottom: 0;
+}
+
+.metrics-block-inner {
+    padding: 0.25rem;
+}
+
+.block-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0.25rem 0.75rem;
+    border-radius: 2rem;
+    margin-bottom: 0.6rem;
+}
+
+.tag-performance {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.tag-risk {
+    background: var(--ag-danger-light);
+    color: #991b1b;
+}
+
+.tag-pnl {
+    background: var(--ag-success-light);
+    color: #065f46;
+}
+
+.tag-riskreward {
+    background: var(--ag-warning-light);
+    color: #92400e;
+}
+
+.tag-activity {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.tag-quality {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.tag-signal {
+    background: var(--ag-success-light);
+    color: #065f46;
+}
+
+/* Chip aliases for legacy components */
+.metric-chip {
+    background: var(--ag-card-alt);
+    border: 1px solid var(--ag-border-light);
+    border-radius: var(--ag-radius-sm);
+    padding: 1rem;
+    height: 100%;
+}
+
+.metric-chip.gradient-chip-success {
+    background: var(--ag-success-light);
+    border-color: #6ee7b7;
+}
+
+.metric-chip.gradient-chip-danger {
+    background: var(--ag-danger-light);
+    border-color: #fca5a5;
+}
+
+.metric-chip-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ag-text-muted);
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+.metric-chip-value {
+    font-family: var(--font-heading);
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--ag-text);
+    line-height: 1.2;
+}
+
+.metric-chip-sub {
+    font-size: 0.62rem;
+    color: var(--ag-text-faint);
+    margin-top: 0.15rem;
+}
+
+.stat-grid.compact-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+}
+
+/* ─── 16. APPENDIX ───────────────────────────────────── */
+.ag-appendix {
+    margin-top: 6rem;
+    padding-top: 4rem;
+    border-top: 2px solid var(--ag-border);
+}
+
+.ag-collapsible-header {
+    cursor: pointer;
+    background: var(--ag-card);
+    padding: 1.25rem 1.75rem;
+    border-radius: var(--ag-radius);
+    margin-bottom: 1rem;
+    box-shadow: var(--ag-shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+    border: 1px solid var(--ag-border-light);
+}
+
+.ag-collapsible-header:hover {
+    transform: scale(1.005);
+    box-shadow: var(--ag-shadow-md);
+}
+
+.ag-collapsible-content {
+    display: none;
+    padding: 1.5rem 0;
+    animation: slideDown 0.3s ease-out;
+}
+
+.ag-collapsible-content.open {
+    display: block;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Quality bars */
+.quality-row {
+    margin-bottom: 0.75rem;
+}
+
+.quality-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.quality-bar {
+    height: 6px;
+    background: var(--ag-card-alt);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.quality-bar span {
+    display: block;
+    height: 100%;
+    background: var(--ag-primary);
+    border-radius: 10px;
+    transition: width 1s ease;
+}
+
+/* Data table */
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0.4rem;
+}
+
+.data-table th {
+    padding: 0.75rem 1rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--ag-text-faint);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.data-table td {
+    background: var(--ag-card);
+    padding: 1rem;
+    border-top: 1px solid var(--ag-border-light);
+    border-bottom: 1px solid var(--ag-border-light);
+}
+
+.data-table tr td:first-child {
+    border-top-left-radius: var(--ag-radius-sm);
+    border-bottom-left-radius: var(--ag-radius-sm);
+    border-left: 1px solid var(--ag-border-light);
+}
+
+.data-table tr td:last-child {
+    border-top-right-radius: var(--ag-radius-sm);
+    border-bottom-right-radius: var(--ag-radius-sm);
+    border-right: 1px solid var(--ag-border-light);
+}
+
+/* ─── 17. RADAR CHART WRAPPER ───────────────────────── */
+.ag-radar-wrap {
+    position: relative;
+}
+
+/* ─── 18. UTILITY ────────────────────────────────────── */
+.text-ag-primary {
+    color: var(--ag-primary) !important;
+}
+
+.text-ag-success {
+    color: var(--ag-success) !important;
+}
+
+.text-ag-danger {
+    color: var(--ag-danger) !important;
+}
+
+.text-ag-warning {
+    color: var(--ag-warning) !important;
+}
+
+.text-ag-muted {
+    color: var(--ag-text-muted) !important;
+}
+
+.text-ag-faint {
+    color: var(--ag-text-faint) !important;
+}
+
+.bg-ag-primary {
+    background: var(--ag-primary-light) !important;
+}
+
+.bg-ag-success {
+    background: var(--ag-success-light) !important;
+}
+
+.bg-ag-danger {
+    background: var(--ag-danger-light) !important;
+}
+
+.bg-ag-warning {
+    background: var(--ag-warning-light) !important;
+}
+
+.fw-500 {
+    font-weight: 500 !important;
+}
+
+.fw-600 {
+    font-weight: 600 !important;
+}
+
+.fw-700 {
+    font-weight: 700 !important;
+}
+
+.fw-800 {
+    font-weight: 800 !important;
+}
+
+.font-heading {
+    font-family: var(--font-heading) !important;
+}
+
+.smallest {
+    font-size: 0.7rem;
+}
+
+.uppercase-tracking {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+/* ─── 17. HOVER TOOLTIP TABLES ───────────────────────── */
+.ag-hover-container {
+    position: relative;
+    cursor: help;
+    display: inline-block;
+}
+
+.ag-hover-table-wrapper {
+    position: absolute;
+    bottom: 110%;
+    left: 0;
+    z-index: 1100;
+    width: 750px;
+    background: white;
+    border-radius: var(--ag-radius);
+    box-shadow: var(--ag-shadow-lg), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--ag-border);
+    padding: 0;
+    display: none;
+    max-height: 500px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ag-primary-light) transparent;
+}
+
+/* Custom scrollbar for webkit */
+.ag-hover-table-wrapper::-webkit-scrollbar {
+    width: 6px;
+}
+
+.ag-hover-table-wrapper::-webkit-scrollbar-thumb {
+    background: var(--ag-primary-light);
+    border-radius: 10px;
+}
+
+
+.ag-hover-container:hover .ag-hover-table-wrapper {
+    display: block;
+}
+
+.ag-hover-table {
+    width: 100%;
+    margin-bottom: 0;
+    font-size: 0.72rem;
+}
+
+.ag-hover-table th {
+    padding: 12px 15px;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.ag-hover-table td {
+    padding: 10px 15px;
+    border-top: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.ag-hover-table tr:nth-child(even) {
+    background-color: #fafafa;
+}
+
+.ag-hover-table tr:hover {
+    background-color: #f1f5f9 !important;
+}
+
+
+.ag-hover-table tr:hover {
+    background-color: #f8fafc;
+}

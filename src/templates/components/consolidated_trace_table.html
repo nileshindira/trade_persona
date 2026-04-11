@@ -1,0 +1,255 @@
+<div class="ag-card h-auto mt-4 px-0 pb-0 overflow-hidden" id="consolidatedTraceSection">
+    <div class="d-flex justify-content-between align-items-center px-4 mb-4">
+        <h5 class="fw-bold mb-0">Consolidated Trade Trace Data</h5>
+        <div class="text-ag-faint smallest">
+            <i class="bi bi-info-circle me-1"></i> Use horizontal scroll to view key forensic metrics.
+        </div>
+    </div>
+
+    <div class="trace-table-container">
+        <table class="ag-table trace-table">
+            <thead>
+                <tr>
+                    <th class="sticky-col">Trade Date</th>
+                    <th class="sticky-col-second">Symbol</th>
+                    <th>Side</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Value</th>
+                    <th>Charges</th>
+                    <th>PnL</th>
+                    <th class="text-center">Timing%</th>
+                    <th class="text-center">Streak</th>
+                    <th>Market</th>
+                    <th>Open</th>
+                    <th>High</th>
+                    <th>Low</th>
+                    <th>Close</th>
+                    <th>Volume</th>
+                    <th>DMA 10</th>
+                    <th>EMA 10</th>
+                    <th>EMA 21</th>
+                    <th>EMA 50</th>
+                    <th>EMA 100</th>
+                    <th>T-Score</th>
+                    <th>F-Score</th>
+                    <th>Total</th>
+                    <th>52W H/L</th>
+                    <th>ATH/ATL</th>
+                    <th>EMA Score</th>
+                    <th>News Sent.</th>
+                    <th>Impact</th>
+                    <th>Category</th>
+                    <th>Flags</th>
+                    <th>Pattern</th>
+                    <th>Sector Best</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report.appendix.consolidated_trace %}
+                <tr class="{{ 'row-loss' if (row.pnl or 0) < 0 else 'row-gain' }}">
+                    <td class="sticky-col text-nowrap">{{ row.trade_date }}</td>
+                    <td class="sticky-col-second fw-bold text-nowrap">{{ row.symbol }}</td>
+                    <td>
+                        <span
+                            class="badge-simple {{ 'bg-soft-success' if row.transaction_type == 'BUY' else 'bg-soft-danger' }}">
+                            {{ row.transaction_type }}
+                        </span>
+                    </td>
+                    <td class="text-end">{{ row.quantity }}</td>
+                    <td class="text-end">₹{{ '{:,.2f}'.format(row.price or 0) }}</td>
+                    <td class="text-end">₹{{ '{:,.0f}'.format(row.trade_value or 0) }}</td>
+                    <td class="text-end text-ag-muted">₹{{ '{:,.1f}'.format(row.charges or 0) }}</td>
+                    <td
+                        class="text-end fw-bold {{ 'text-ag-success' if (row.pnl or 0) > 0 else ('text-ag-danger' if (row.pnl or 0) < 0 else 'text-muted') }}">
+                        ₹{{ '{:,.0f}'.format(row.pnl or 0) }}
+                    </td>
+                    <td class="text-center font-monospace">{{ row["Timing Efficiecny"] or '-' }}</td>
+                    <td class="text-center">
+                        {% if (row.win_streak or 0) > 1 %}
+                        <span class="text-success small fw-bold">W{{ row.win_streak }}</span>
+                        {% elif (row.loss_streak or 0) > 1 %}
+                        <span class="text-danger small fw-bold">L{{ row.loss_streak }}</span>
+                        {% else %}
+                        <span class="text-muted opacity-50">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="smallest text-nowrap text-center">{{ row.market_behaviour }}</td>
+
+                    <td class="smallest text-end text-ag-muted">{{ row.open|round(1) if row.open else '-' }}</td>
+                    <td class="smallest text-end text-ag-muted">{{ row.high|round(1) if row.high else '-' }}</td>
+                    <td class="smallest text-end text-ag-muted">{{ row.low|round(1) if row.low else '-' }}</td>
+                    <td class="smallest text-end text-ag-muted">{{ row.close|round(1) if row.close else '-' }}</td>
+                    <td class="smallest text-end text-ag-muted">{{ '{:,.0f}'.format(row.volume or 0) }}</td>
+
+                    <td class="smallest text-center text-ag-muted">{{ row.dma_10|float|round(1) if row.dma_10 else '-'
+                        }}</td>
+                    <td class="smallest text-center text-ag-muted">{{ row.ema_10|float|round(1) if row.ema_10 else '-'
+                        }}</td>
+                    <td class="smallest text-center text-ag-muted">{{ row.ema_21|float|round(1) if row.ema_21 else '-'
+                        }}</td>
+                    <td class="smallest text-center text-ag-muted">{{ row.ema_50|float|round(1) if row.ema_50 else '-'
+                        }}</td>
+                    <td class="smallest text-center text-ag-muted">{{ row.ema_100|float|round(1) if row.ema_100 else '-'
+                        }}</td>
+
+                    <td class="smallest text-center font-monospace">{{ row.t_score or '-' }}</td>
+                    <td class="smallest text-center font-monospace">{{ row.f_score or '-' }}</td>
+                    <td class="smallest text-center fw-bold">{{ row.total_score or '-' }}</td>
+
+                    <td class="smallest text-center">
+                        {{ '52WH' if row.is_52week_high }} {{ '52WL' if row.is_52week_low }}
+                    </td>
+                    <td class="smallest text-center">
+                        {{ 'ATH' if row.is_alltime_high }} {{ 'ATL' if row.is_alltime_low }}
+                    </td>
+
+                    <td class="smallest text-center">{{ row.ema_score or '-' }}</td>
+                    <td class="smallest text-center">{{ row.news_sentiment|float|round(2) if row.news_sentiment else '-'
+                        }}</td>
+                    <td class="smallest text-center">{{ row.news_impactscore|float|round(1) if row.news_impactscore else
+                        '-' }}</td>
+                    <td class="smallest text-nowrap">{{ row.news_category or '-' }}</td>
+
+                    <td class="text-center small">
+                        {% if row.is_news %}<i class="bi bi-newspaper text-primary" title="News"></i>{% endif %}
+                        {% if row.is_event %}<i class="bi bi-calendar-event text-warning" title="Event"></i>{% endif %}
+                        {% if row.is_high_volume %}<i class="bi bi-bar-chart-fill text-info" title="High Volume"></i>{%
+                        endif %}
+                    </td>
+
+                    <td>
+                        <span
+                            class="smallest text-nowrap {{ 'text-warning' if row.pattern != 'No Pattern' else 'text-muted opacity-50' }}">
+                            {{ row.pattern }}
+                        </span>
+                    </td>
+                    <td class="smallest fw-bold text-primary">{{ row.sector_alternate or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="px-4 py-3 bg-ag-dark border-top d-flex justify-content-between align-items-center">
+        <div class="smallest text-ag-faint">
+            Displaying <strong>{{ report.appendix.consolidated_trace|length }}</strong> chronological audit trails.
+        </div>
+        <button class="btn btn-sm btn-link text-ag-primary p-0 smallest" onclick="exportFullTrace()">
+            <i class="bi bi-download me-1"></i> Export Entire Trace (CSV)
+        </button>
+    </div>
+</div>
+
+<style>
+    .trace-table-container {
+        max-height: 700px;
+        overflow: auto;
+        background: var(--ag-card);
+    }
+
+    .trace-table {
+        font-size: 0.72rem;
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+    }
+
+    .trace-table th {
+        background: var(--ag-card-alt);
+        color: var(--ag-text-muted);
+        font-weight: 700;
+        padding: 0.75rem 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 2px solid var(--ag-border);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .trace-table td {
+        padding: 0.65rem 1rem;
+        border-bottom: 1px solid var(--ag-border-light);
+        color: var(--ag-text);
+    }
+
+    .trace-table .sticky-col {
+        position: sticky;
+        left: 0;
+        z-index: 21;
+        background: var(--ag-card);
+        border-right: 1px solid var(--ag-border);
+    }
+
+    .trace-table .sticky-col-second {
+        position: sticky;
+        left: 120px;
+        /* Adjust based on date column width */
+        z-index: 21;
+        background: var(--ag-card);
+        border-right: 1px solid var(--ag-border);
+    }
+
+    .trace-table thead th.sticky-col,
+    .trace-table thead th.sticky-col-second {
+        z-index: 30;
+        background: var(--ag-card-alt);
+    }
+
+    .row-loss {
+        background: #fffafa;
+        /* Very light red hue */
+    }
+
+    .row-gain {
+        background: #f8fff9;
+        /* Very light green hue */
+    }
+
+    .trace-table tr:hover td,
+    .trace-table tr:hover .sticky-col,
+    .trace-table tr:hover .sticky-col-second {
+        background-color: var(--ag-card-alt) !important;
+    }
+
+    .badge-simple {
+        padding: 0.2rem 0.45rem;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.65rem;
+    }
+
+    .bg-ag-dark {
+        background: var(--ag-card-alt);
+    }
+</style>
+
+<script>
+    function exportFullTrace() {
+        // Basic CSV export logic
+        const table = document.querySelector('.trace-table');
+        let csv = [];
+        const rows = table.querySelectorAll('tr');
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = [];
+            const cols = rows[i].querySelectorAll('td, th');
+            for (let j = 0; j < cols.length; j++) {
+                let data = cols[j].innerText.trim().replace(/(\r\n|\n|\r)/gm, ' ');
+                data = data.replace(/"/g, '""');
+                row.push('"' + data + '"');
+            }
+            csv.push(row.join(','));
+        }
+
+        const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "consolidated_trace_export.csv";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>

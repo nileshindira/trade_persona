@@ -23,15 +23,18 @@
   <p class="ag-hero-headline">&ldquo;{{ report.hero.headline }}&rdquo;</p>
   <div class="ag-topline">
     <div class="ag-topline-item">
-      <span class="ag-topline-label">Net Realized P&L</span>
+      <span class="ag-topline-label">Net Portfolio P&L</span>
       <div
-        class="ag-topline-value {{ 'text-ag-success' if (report.hero.topline.net_pnl or 0) > 0 else 'text-ag-danger' }}">
+        class="ag-topline-value {{ 'text-ag-success' if (report.hero.topline.net_pnl or 0) > 0 else 'text-ag-danger' }}"
+        title="Combined Realized + Unrealized P&L from internal trades">
         &#8377;{{ '{:,.0f}'.format(report.hero.topline.net_pnl | float) }}
       </div>
     </div>
     <div class="ag-topline-item">
-      <span class="ag-topline-label">Win Rate</span>
-      <div class="ag-topline-value text-white">{{ '%.1f' | format(report.hero.topline.win_rate | float) }}%</div>
+      <span class="ag-topline-label">Win Rate (Excl. Zeros)</span>
+      <div class="ag-topline-value text-white"
+        title="Percentage of trades that closed with a profit, excluding break-even trades">{{ '%.1f' |
+        format(report.hero.topline.win_rate | float) }}%</div>
     </div>
     <div class="ag-topline-item">
       <span class="ag-topline-label">Profit Factor</span>
@@ -64,6 +67,7 @@
     <li class="nav-item"><a class="nav-link" href="#strengths" data-target="strengths">✅ Strengths</a></li>
     <li class="nav-item"><a class="nav-link" href="#mistakes" data-target="mistakes">🩸 Losses</a></li>
     <li class="nav-item"><a class="nav-link" href="#roadmap" data-target="roadmap">🗺️ Roadmap</a></li>
+    <li class="nav-item"><a class="nav-link" href="#journey" data-target="journey">🛣️ Journey</a></li>
     <li class="nav-item"><a class="nav-link" href="#evidence" data-target="evidence">📋 Evidence</a></li>
     <li class="nav-item"><a class="nav-link" href="#appendix" data-target="appendix">📊 Appendix</a></li>
   </ul>
@@ -171,7 +175,7 @@
       </div>
       <div class="row g-3">
         {% for key, val in report.trade_dna.items() %}
-        {% if key != "avg_hold_minutes" %}
+        {% if key != "avg_hold_minutes" and key != "signal_style" %}
         <div class="col-6 col-md-4 col-lg-2">
           <div class="ag-chip text-center">
             <span class="ag-chip-label">{{ key.replace("_", " ").title() }}</span>
@@ -368,42 +372,156 @@
         </div>
       </div>
       <div class="col-lg-4">
-        <div class="ag-plan-card-dark">
-          <div class="ag-chip-label text-warning opacity-80 mb-2">The One Move That Changes Everything</div>
-          <div class="h3 fw-800 text-warning mb-4">{{ report.improvement_plan.biggest_lever | markdown | safe }}</div>
-          <div class="p-3 rounded-3 border border-white border-opacity-10 bg-white bg-opacity-5 text-start my-3">
-            <div class="ag-chip-label opacity-40">Surgical Verdict</div>
-            <div class="h5 fw-bold text-ag-success mb-0">{{ report.final_verdict | markdown | safe }}</div>
+        <div class="ag-plan-card-primary">
+          <h4 class="fw-bold mb-4"><i class="bi bi-gem me-2 text-warning"></i>The One Move That Changes Everything</h4>
+          <div class="ag-plan-item">
+            <div class="ag-plan-icon"><i class="bi bi-star-fill text-warning"></i></div>
+            <div class="fw-bold h5 mb-3">{{ report.improvement_plan.biggest_lever | markdown | safe }}</div>
           </div>
-          <div class="mt-auto opacity-50 small font-heading">Powered by Stockk Diagnostic Engine</div>
+
+          <div class="mt-4 p-3 rounded-3 border border-white border-opacity-10 bg-white bg-opacity-10">
+            <div class="ag-chip-label text-white opacity-60 mb-2" style="font-size: 0.6rem;">Surgical Verdict</div>
+            <div class="small fw-semibold text-white">{{ report.final_verdict | markdown | safe }}</div>
+          </div>
+
+          <div class="mt-auto pt-4 opacity-40 small font-heading">Powered by Stockk Diagnostic Engine</div>
         </div>
       </div>
     </div>
 
-    {% if report.transformation %}
-    <div class="p-5 rounded-5 shadow-lg position-relative overflow-hidden"
-      style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:white;">
-      <div class="text-center mb-4">
-        <h4 class="fw-bold font-heading mb-1">Behavioral Transformation Forecast</h4>
-        <p class="opacity-50 small">Projected impact of implementing the Roadmap</p>
-      </div>
-      <div class="row g-4">
-        {% for sim in report.transformation %}
-        <div class="col-md-4">
-          <div class="ag-uplift-card">
-            <div class="smallest uppercase-tracking text-ag-primary mb-2">Change Pattern</div>
-            <h6 class="fw-bold mb-3">{{ sim.adjustment | default(sim.change | default("")) }}</h6>
-            <div class="badge bg-success w-100 py-2 mb-3 text-wrap">{{ sim.projected_benefit |
-              default(sim.expected_metric_impact | default("")) | markdown | safe }}</div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
   </section>
 
-  <!-- ── EVIDENCE LEDGER ───────────────────────────────────── -->
+  <!-- ── ANALYSIS JOURNEY ───────────────────────────────────── -->
+  {% if report.web_data and report.web_data.persona_trace_log %}
+  <section id="journey" class="ag-section fade-in-up">
+    <div class="ag-card rounded-5 border-0 shadow-sm" style="background: white;">
+      <div class="d-flex align-items-center mb-4">
+        <div>
+          <div class="ag-section-eyebrow text-ag-primary">Audit Traceability</div>
+          <h2 class="fw-bold mb-1">Behavioral Analysis Journey</h2>
+          <p class="text-ag-faint small mb-0">Stage-wise tracing of the 3-Stage Diagnostic Flow</p>
+        </div>
+        <div class="ms-auto">
+          <span class="ag-tag ag-tag--info">Grounded Evidence</span>
+        </div>
+      </div>
+
+      <div class="ag-collapsible-wrapper border rounded-4 p-4 mb-4" style="background: #f8fafc;">
+        <h6 class="ag-collapsible-header d-flex align-items-center gap-2 mb-0" data-target="trace_content"
+          style="cursor: pointer; color: #334155;">
+          <i class="bi bi-diagram-3-fill text-ag-primary"></i>
+          <span class="fw-bold">View Stage-Wise Synthesis Trace</span>
+          <i class="bi bi-chevron-down ms-auto"></i>
+        </h6>
+        <div id="trace_content" class="ag-collapsible-content">
+          <div class="mt-4 row g-4">
+            <!-- Stage 1: Chunks -->
+            <div class="col-md-4">
+              <div class="p-4 rounded-4 bg-white border h-100 shadow-sm">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                  <span class="badge bg-primary rounded-circle p-2"
+                    style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size: 0.8rem;">1</span>
+                  <h6 class="fw-bold mb-0">Forensic Chunks</h6>
+                </div>
+                <p class="smallest text-ag-faint mb-3">Raw behavioral patterns mined from trade clusters.</p>
+                <div class="overflow-auto pr-2" style="max-height: 380px;">
+                  {% for chunk in report.web_data.persona_trace_log.chunks %}
+                  <div class="mb-3 p-3 rounded-3 bg-light border-start border-4 border-primary">
+                    <div class="fw-bold smallest mb-1 text-primary">{{ chunk.chunk_id }}</div>
+                    <div class="smallest text-ag-muted mb-2 fw-bold" style="font-size: 0.65rem;">{{ chunk.chunk_window
+                      }}</div>
+                    <div class="small fw-bold text-dark mb-1">{{ chunk.behavioral_archetype | default(chunk.headline |
+                      default("Pattern Detected")) }}</div>
+                    {% if chunk.traits %}
+                    <div class="mt-2 d-flex flex-wrap gap-1">
+                      {% for trait in chunk.traits[:3] %}
+                      <span class="badge bg-white border text-ag-faint font-monospace" style="font-size: 0.62rem;">{{
+                        trait }}</span>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage 2: Aggregate -->
+            <div class="col-md-4">
+              <div class="p-4 rounded-4 bg-white border h-100 shadow-sm">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                  <span class="badge bg-info rounded-circle p-2"
+                    style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:white;font-size: 0.8rem;">2</span>
+                  <h6 class="fw-bold mb-0">Profile Synthesis</h6>
+                </div>
+                <p class="smallest text-ag-faint mb-3">Synthesized profile from multi-chunk behavioral signals.</p>
+                <div class="p-3 rounded-3 bg-light border-start border-4 border-info">
+                  {% set agg = report.web_data.persona_trace_log.aggregated_profile %}
+                  <div class="fw-bold smallest mb-1 text-info">Synthetic Behavioral Profile</div>
+                  <div class="small fw-bold text-dark mb-2">{{ agg.persona_name | default(agg.trader_type |
+                    default("Grounded Profile")) }}</div>
+                  <div class="smallest text-ag-muted mb-3 italic" style="line-height: 1.4;">"{{ agg.identity_summary |
+                    default(agg.headline | default("Behavioral profile established from historical tape.")) |
+                    truncate(250) }}"</div>
+
+                  {% if agg.strengths %}
+                  <div class="smallest fw-bold mb-1 text-success">CORE EDGE</div>
+                  <ul class="ps-3 mb-3 smallest text-ag-faint">
+                    {% for s in agg.strengths[:3] %}
+                    <li>{{ s.title | default(s) }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% endif %}
+
+                  {% if agg.mistakes %}
+                  <div class="smallest fw-bold mb-1 text-danger">LEAKAGE FOCUS</div>
+                  <ul class="ps-3 mb-0 smallest text-ag-faint">
+                    {% for m in agg.mistakes[:3] %}
+                    <li>{{ m.title | default(m) }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage 3: Grounded Metrics -->
+            <div class="col-md-4">
+              <div class="p-4 rounded-4 bg-white border h-100 shadow-sm">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                  <span class="badge bg-success rounded-circle p-2"
+                    style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size: 0.8rem;">3</span>
+                  <h6 class="fw-bold mb-0">Factual Grounding</h6>
+                </div>
+                <p class="smallest text-ag-faint mb-3">What-If simulations derived from actual trade data.</p>
+                <div class="p-3 rounded-3 bg-light border-start border-4 border-success">
+                  {% set sims = report.web_data.persona_trace_log.simulations %}
+                  <div class="fw-bold smallest mb-1 text-success">SIMULATED IMPROVEMENTS</div>
+                  <div class="smallest text-ag-muted mb-3">Metrics calculated from historical corrections.</div>
+                  {% for s in sims.values() %}
+                  <div class="mb-2 pb-2 border-bottom last-border-0">
+                    <div class="smallest fw-bold text-dark">{{ s.action | default("Optimization") }}</div>
+                    <div class="small text-success fw-bold">
+                      {% if s.delta > 0 %}+₹{{ s.delta | round | int | abs | format_currency }}{% endif %}
+                      {% if s.impact_pct > 0 %}(+{{ s.impact_pct | round(1) }}%){% endif %}
+                      {% if s.delta == 0 and s.impact_pct == 0 %}<span class="text-ag-primary">Efficiency Boost</span>{%
+                      endif %}
+                    </div>
+                  </div>
+                  {% endfor %}
+                  {% if not sims %}
+                  <div class="smallest text-ag-faint py-4 text-center">No high-impact simulations detected.</div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   <section id="evidence" class="ag-section fade-in-up">
     <div class="ag-card">
       <div class="d-flex align-items-center gap-3 mb-4">
@@ -466,11 +584,11 @@
       <div class="container-fluid px-0">
         <div class="row g-4 mb-5">
           <div class="col-lg-8">
-            <div class="ag-card">
+            <div class="ag-card h-auto">
               <h5 class="fw-bold mb-4">Cumulative Performance Path</h5>
               <div style="height:350px;"><canvas id="pnlTimelineChart"></canvas></div>
             </div>
-            <div class="ag-card mt-3">
+            <div class="ag-card h-auto mt-3">
               <h5 class="fw-bold mb-4">NIFTY Benchmark (Original Scale)</h5>
               <div style="height:350px;"><canvas id="niftyOriginalChart"></canvas></div>
             </div>
@@ -540,6 +658,10 @@
           <h5 class="fw-bold mb-4">Detailed Trade Log</h5>
           {% include "components/positions_table.html" %}
         </div>
+
+        <div class="mb-5">
+          {% include "components/consolidated_trace_table.html" %}
+        </div>
       </div>
     </div>
   </section>
@@ -551,7 +673,8 @@
   <p class="mb-0">Confidential Trading Analytics. Financial decisions remain the responsibility of the trader.</p>
 </footer>
 
-<script id="report_data" type="application/json">{{ report | tojson | safe }}</script>
+<script id="report_data" type="application/json">{{ json_report | tojson | safe }}</script>
+
 
 <script>
   const reportData = JSON.parse(document.getElementById('report_data').textContent);
@@ -575,18 +698,7 @@
               tension: 0.3,
               pointRadius: 0,
               borderWidth: 2.5
-            },
-            ...(chartsData.pnl_timeline.benchmark_values && chartsData.pnl_timeline.benchmark_values.length ? [{
-              label: 'Nifty Growth (Scaled)',
-              data: chartsData.pnl_timeline.benchmark_values,
-              borderColor: '#94a3b8',
-              backgroundColor: 'transparent',
-              fill: false,
-              tension: 0.3,
-              pointRadius: 0,
-              borderWidth: 1.5,
-              borderDash: [5, 5]
-            }] : [])
+            }
           ]
         },
         options: {
@@ -686,22 +798,56 @@
       });
     }
 
-    if (chartsData.industry_distribution) {
+    if (chartsData.industry_distribution && chartsData.industry_distribution.length > 0) {
       new Chart(document.getElementById('industryChart'), {
         type: 'doughnut',
         data: {
           labels: chartsData.industry_distribution.map(d => d.label),
           datasets: [{
             data: chartsData.industry_distribution.map(d => d.value),
-            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'], borderWidth: 0
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#f97316', '#06b6d4', '#84cc16'],
+            borderWidth: 0,
+            hoverOffset: 15
           }]
         },
         options: {
-          responsive: true, maintainAspectRatio: false, cutout: '68%',
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const item = chartsData.industry_distribution[context.dataIndex];
+                  return ` ${item.label}: ${item.value} Trades (PnL: ₹${Math.round(item.pnl || 0).toLocaleString()})`;
+                },
+                afterBody: (context) => getEnrichedTooltipBody(context[0], chartsData.industry_distribution)
+              }
+            }
+          },
+          cutout: '70%'
         }
       });
     }
+
+    // Helper for enriched tooltips
+    const getEnrichedTooltipBody = (context, dataList) => {
+      const item = dataList[context.dataIndex];
+      if (!item) return "";
+      let body = [];
+      if (item.value !== undefined) body.push(`Trades: ${item.value}`);
+      if (item.pnl !== undefined) body.push(`PnL: ₹${Math.round(item.pnl).toLocaleString()}`);
+
+      if (item.stocks && item.stocks.length > 0) {
+        body.push("");
+        body.push("STOCK PERFORMANCE:");
+        // Limit to top 5 for clarity
+        item.stocks.slice(0, 5).forEach(s => {
+          body.push(`${s.symbol}: ₹${Math.round(s.pnl).toLocaleString()} | WR: ${s.win_rate}% | T: ${s.trade_count}`);
+        });
+      }
+      return body;
+    };
 
     if (chartsData.instrument_distribution) {
       new Chart(document.getElementById('instrumentChart'), {
@@ -715,24 +861,46 @@
         },
         options: {
           responsive: true, maintainAspectRatio: false, cutout: '68%',
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                afterBody: (context) => getEnrichedTooltipBody(context[0], chartsData.instrument_distribution)
+              }
+            }
+          }
         }
       });
     }
 
-    if (reportData.appendix.metrics.sector_segregation) {
+    if (reportData.appendix.metrics.sector_segregation && reportData.appendix.metrics.sector_segregation.length > 0) {
+      const segData = reportData.appendix.metrics.sector_segregation;
       new Chart(document.getElementById('sectorSegregationChart'), {
-        type: 'doughnut',
+        type: 'pie',
         data: {
-          labels: reportData.appendix.metrics.sector_segregation.map(d => d.label),
+          labels: segData.map(d => d.label),
           datasets: [{
-            data: reportData.appendix.metrics.sector_segregation.map(d => d.value),
-            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], borderWidth: 0
+            data: segData.map(d => d.value),
+            backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#f472b6', '#34d399', '#fbbf24'],
+            borderWidth: 0,
+            hoverOffset: 15
           }]
         },
         options: {
-          responsive: true, maintainAspectRatio: false, cutout: '68%',
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const item = segData[context.dataIndex];
+                  return ` ${item.label}: ${item.value}% Exposure (PnL: ₹${Math.round(item.pnl || 0).toLocaleString()})`;
+                },
+                afterBody: (context) => getEnrichedTooltipBody(context[0], segData)
+              }
+            }
+          }
         }
       });
     }

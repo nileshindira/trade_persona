@@ -337,130 +337,179 @@
     </div>
 </div>
 
-<!-- MULTIVARIATE CORRELATION MATRIX — Phase 5 Upgrade -->
+<!-- MULTIVARIATE INTELLIGENCE ENGINE — UPGRADED PHASE 5 -->
 <div class="col-12 mt-4">
-    <div class="ag-card">
-        <div class="d-flex align-items-center gap-3 mb-4">
-            <div class="d-flex align-items-center justify-content-center rounded-circle bg-dark text-white"
-                style="width:44px;height:44px;font-size:1.3rem;flex-shrink:0;">🔬</div>
-            <div>
-                <h5 class="fw-bold mb-0">Multivariate Pattern Matrix</h5>
-                <p class="small text-ag-muted mb-0">
-                    Feature confluence → Win/Loss correlations. Sorted by Total P&L (best first).
-                </p>
+    <div class="ag-card ag-card--dark overflow-hidden p-0 border-0 shadow-lg"
+        style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+
+        <div class="p-4 border-bottom border-white border-opacity-10">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center justify-content-center rounded-circle bg-primary text-white shadow-sm"
+                        style="width:48px;height:48px;font-size:1.4rem;flex-shrink:0;">🔬</div>
+                    <div>
+                        <h4 class="fw-bold mb-0 text-white">Multivariate Pattern Matrix</h4>
+                        <p class="small text-white opacity-50 mb-0">
+                            Cross-correlating F-Score, T-Score, News, Volume & Contextual Edges.
+                        </p>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <span class="ag-tag ag-tag--primary mb-0 px-3 py-2" style="font-size: 0.75rem;">
+                        <i class="bi bi-cpu me-1"></i> Behavioral Intelligence Enabled
+                    </span>
+                </div>
             </div>
-            <span class="ag-tag ag-tag--primary ms-auto" id="mvpCountBadge">Loading…</span>
         </div>
 
         <div class="table-responsive">
-            <table class="data-table" id="mvpTable">
+            <style>
+                .matrix-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+
+                .matrix-table th {
+                    background: rgba(255, 255, 255, 0.03);
+                    color: rgba(255, 255, 255, 0.5);
+                    font-size: 0.65rem;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                    padding: 1rem 1.5rem;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                }
+
+                .matrix-table td {
+                    padding: 1.25rem 1.5rem;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    vertical-align: middle;
+                }
+
+                .matrix-row:hover {
+                    background: rgba(255, 255, 255, 0.02);
+                }
+
+                .pattern-tag {
+                    display: inline-block;
+                    padding: 0.2rem 0.6rem;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 4px;
+                    font-size: 0.7rem;
+                    font-weight: 600;
+                    color: rgba(255, 255, 255, 0.8);
+                    margin: 2px;
+                }
+
+                .pnl-badge {
+                    display: inline-block;
+                    padding: 0.4rem 0.8rem;
+                    border-radius: var(--ag-radius-sm);
+                    font-weight: 800;
+                    font-family: var(--font-heading);
+                    font-size: 0.95rem;
+                }
+
+                .pnl-badge-success {
+                    background: rgba(16, 185, 129, 0.15);
+                    color: #34d399;
+                    border: 1px solid rgba(16, 185, 129, 0.2);
+                }
+
+                .pnl-badge-danger {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #f87171;
+                    border: 1px solid rgba(239, 68, 68, 0.2);
+                }
+            </style>
+            <table class="matrix-table">
                 <thead>
                     <tr>
-                        <th style="width:40%">Confluence Pattern</th>
-                        <th class="text-end" style="width:10%"># Trades</th>
-                        <th class="text-end" style="width:15%">Win Rate</th>
-                        <th class="text-end" style="width:15%">Avg P&L</th>
-                        <th class="text-end" style="width:20%">Total P&L</th>
+                        <th style="width: 45%;">Confluence Signal Pattern</th>
+                        <th class="text-center">Trades</th>
+                        <th class="text-center">Win Rate</th>
+                        <th class="text-end">Avg P&L</th>
+                        <th class="text-end">Total Impact</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% set mvp_rows = report.appendix.metrics.multivariate_pattern_analysis | default([]) %}
                     {% for row in mvp_rows | sort(attribute='total_pnl', reverse=True) %}
-                    <tr>
+                    <tr class="matrix-row">
                         <td>
-                            <span class="fw-bold text-dark" style="font-size:0.82rem;">{{ row.pattern }}</span>
-                        </td>
-                        <td class="text-end small">{{ row.count }}</td>
-                        <td class="text-end">
-                            <div class="d-flex align-items-center justify-content-end gap-2">
-                                <div class="progress" style="height:4px;width:50px;">
-                                    <div class="progress-bar {{ 'bg-success' if row.win_rate > 50 else 'bg-danger' }}"
-                                        style="width:{{ [row.win_rate|float, 100]|min }}%"></div>
-                                </div>
-                                <span
-                                    class="fw-bold small {{ 'text-ag-success' if row.win_rate > 50 else 'text-ag-danger' }}">
-                                    {{ '%.1f'|format(row.win_rate) }}%
-                                </span>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for part in row.pattern.split(' + ') %}
+                                <span class="pattern-tag">{{ part }}</span>
+                                {% endfor %}
                             </div>
                         </td>
-                        <td
-                            class="text-end small {{ 'text-ag-success' if row.avg_pnl_per_trade > 0 else 'text-ag-danger' }}">
-                            ₹{{ '{:,.0f}'.format(row.avg_pnl_per_trade|float) }}
+                        <td class="text-center text-white">
+                            {{ row.count }}
                         </td>
-                        <td class="text-end fw-bold {{ 'text-ag-success' if row.total_pnl > 0 else 'text-ag-danger' }}">
-                            ₹{{ '{:,.0f}'.format(row.total_pnl|float) }}
+                        <td class="text-center">
+                            <div class="d-flex flex-column align-items-center">
+                                <span class="fw-bold {{ 'text-ag-success' if row.total_pnl > 0 else 'text-ag-danger' }}"
+                                    style="font-size: 0.9rem;">
+                                    {{ '%.1f'|format(row.win_rate) }}%
+                                </span>
+                                <div class="progress mt-1"
+                                    style="height:3px; width: 60px; background: rgba(255,255,255,0.1);">
+                                    <div class="progress-bar {{ 'bg-success' if row.total_pnl > 0 else 'bg-danger' }}"
+                                        style="width:{{ [row.win_rate|float, 100]|min }}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <span
+                                class="small {{ 'text-ag-success' if row.total_pnl > 0 else 'text-ag-danger' }} opacity-80 font-monospace">
+                                ₹{{ '{:,.0f}'.format(row.avg_pnl_per_trade|float) }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <span
+                                class="pnl-badge {{ 'pnl-badge-success' if row.total_pnl > 0 else 'pnl-badge-danger' }}">
+                                ₹{{ '{:,.0f}'.format(row.total_pnl|float) }}
+                            </span>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center text-ag-muted py-4">
-                            <i class="bi bi-search d-block fs-4 mb-2"></i>
-                            No significant multivariate patterns detected above threshold.
+                        <td colspan="5" class="text-center text-muted py-5">
+                            <i class="bi bi-cpu fs-2 d-block mb-3 opacity-20"></i>
+                            No significant pattern clusters detected for this period.
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </div>
-</div>
 
-<script>
-    (function () {
-        const rows = document.querySelectorAll('#mvpTable tbody tr');
-        const badge = document.getElementById('mvpCountBadge');
-        if (badge) badge.textContent = rows.length + ' patterns';
-    })();
-</script>
-
-<div class="col-12 mt-4">
-    <div class="card border-0 shadow-sm metric-card">
-        <div class="card-body">
-            <div class="d-flex align-items-center mb-3">
-                <div class="metric-icon bg-dark text-white me-3 mb-0" style="width:40px;height:40px;font-size:1.2rem;">
-                    🔬</div>
-                <div>
-                    <h5 class="fw-bold mb-0">Multivariate Pattern Matrix (Permutations)</h5>
-                    <p class="small text-muted mb-0">Analyzes the interaction between F-score, T-score, News, Volume,
-                        and ATH. Identifies factual multi-feature correlations to Wins/Losses.</p>
+        <div class="p-4 bg-black bg-opacity-20">
+            <h6 class="text-uppercase text-white opacity-40 smallest fw-bold mb-3 letter-spacing-wide">
+                Permutation Insights (Factual Correlations)
+            </h6>
+            <div class="d-flex flex-wrap gap-3">
+                {% for row in mvp_rows[:8] %}
+                <div
+                    class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 bg-white bg-opacity-5 border border-white border-opacity-10">
+                    <span class="smallest text-white opacity-60">{{ row.pattern }}</span>
+                    <span class="fw-bold smallest {{ 'text-ag-success' if row.total_pnl > 0 else 'text-ag-danger' }}">
+                        ₹{{ '{:,.0f}'.format(row.total_pnl) }}
+                    </span>
                 </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-light text-muted small text-uppercase">
-                        <tr>
-                            <th>Confluence Pattern (Features)</th>
-                            <th class="text-end"># Trades</th>
-                            <th class="text-end">Win Rate (%)</th>
-                            <th class="text-end">Avg P&L </th>
-                            <th class="text-end">Total P&L</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in report.appendix.metrics.multivariate_pattern_analysis|default([]) %}
-                        <tr>
-                            <td><span class="badge bg-light text-dark border fw-bold" style="font-size: 0.85rem;">{{
-                                    row.pattern }}</span></td>
-                            <td class="text-end">{{ row.count }}</td>
-                            <td class="text-end fw-bold {{ 'text-success' if row.win_rate > 50 else 'text-danger' }}">{{
-                                '%.1f'|format(row.win_rate) }}%</td>
-                            <td class="text-end {{ 'text-success' if row.avg_pnl_per_trade > 0 else 'text-danger' }}">
-                                ₹{{ '%.0f'|format(row.avg_pnl_per_trade) }}</td>
-                            <td class="text-end {{ 'text-success' if row.total_pnl > 0 else 'text-danger' }}">₹{{
-                                '%.0f'|format(row.total_pnl) }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center text-muted py-3">No significant multivariate patterns
-                                detected above threshold.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                {% endfor %}
             </div>
         </div>
     </div>
 </div>
 
+<script>
+    // Intersection observer for fade-in effect if needed
+    document.addEventListener('DOMContentLoaded', function () {
+        const matrixTable = document.querySelector('.matrix-table');
+        if (matrixTable) {
+            matrixTable.classList.add('fade-in-up', 'visible');
+        }
+    });
+</script>
 </div>

@@ -1,0 +1,134 @@
+<!-- Sector-wise PnL & Metrics -->
+<div class="ag-card mb-5">
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+            style="width:40px;height:40px;font-size:1.1rem;flex-shrink:0;">🏢</div>
+        <h5 class="fw-bold mb-0">Detailed Sector-wise Performance</h5>
+    </div>
+
+    {% if report.appendix.metrics.sectoral_analysis and report.appendix.metrics.sectoral_analysis.all_sectors %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle ag-table">
+            <thead class="bg-light">
+                <tr>
+                    <th>Sector</th>
+                    <th class="text-center">Top Gainer</th>
+                    <th class="text-center">Top Loser</th>
+                    <th class="text-end">Total P&L</th>
+                    <th class="text-end">Win Rate / Loss</th>
+                    <th class="text-end">Trades</th>
+                    <th class="text-end">Avg P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in report.appendix.metrics.sectoral_analysis.all_sectors %}
+                <tr>
+                    <td>
+                        <div class="ag-hover-container">
+                            <span class="fw-bold">{{ s.sector }}</span>
+                            <!-- Hover to see all stocks -->
+                            <div class="ag-hover-table-wrapper">
+                                <div
+                                    class="px-3 py-2 bg-light border-bottom d-flex justify-content-between align-items-center">
+                                    <span class="small fw-bold text-ag-primary">{{ s.sector }} Stocks Analysis</span>
+                                    <span class="badge bg-white text-dark border">{{ s.stocks|length }} Stocks</span>
+                                </div>
+                                <table class="ag-hover-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th class="text-end">Win Rate</th>
+                                            <th class="text-end">Avg P&L</th>
+                                            <th class="text-end">Max Win/Loss</th>
+                                            <th class="text-end">Trades</th>
+                                            <th class="text-end">Total P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for st in s.stocks %}
+                                        <tr>
+                                            <td class="fw-bold text-dark">{{ st.symbol }}</td>
+                                            <td class="text-end">
+                                                <span
+                                                    class="badge {{ 'bg-success-subtle text-success' if st.win_rate > 50 else 'bg-warning-subtle text-warning' }} border">
+                                                    {{ st.win_rate }}%
+                                                </span>
+                                            </td>
+                                            <td class="text-end fw-600">
+                                                ₹{{ '{:,.0f}'.format(st.avg_pnl) }}
+                                            </td>
+                                            <td class="text-end">
+                                                <div class="d-flex flex-column align-items-end"
+                                                    style="line-height: 1.1;">
+                                                    <span class="text-success smallest fw-bold">+₹{{
+                                                        '{:,.0f}'.format(st.max_win) }}</span>
+                                                    <span class="text-danger smallest fw-bold">-₹{{
+                                                        '{:,.0f}'.format(st.max_loss|abs) }}</span>
+                                                </div>
+                                            </td>
+                                            <td class="text-end small">{{ st.trade_count }}</td>
+                                            <td
+                                                class="text-end fw-bold {{ 'text-ag-success' if st.pnl > 0 else 'text-ag-danger' }}">
+                                                ₹{{ '{:,.0f}'.format(st.pnl) }}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3">{{
+                            s.top_gainer_symbol or '-' }}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3">{{
+                            s.top_loser_symbol or '-' }}</span>
+                    </td>
+                    <td class="text-end fw-bold {{ 'text-ag-success' if s.pnl > 0 else 'text-ag-danger' }}">
+                        ₹{{ '{:,.0f}'.format(s.pnl) }}
+                    </td>
+                    <td class="text-end">
+                        <div class="d-flex align-items-center justify-content-end gap-1">
+                            <span class="text-success small fw-bold">{{ s.win_rate }}%</span>
+                            <span class="text-muted small">/</span>
+                            <span class="text-danger small fw-bold">{{ s.loss_rate }}%</span>
+                        </div>
+                    </td>
+                    <td class="text-end small">{{ s.trade_count }}</td>
+                    <td class="text-end small">₹{{ '{:,.0f}'.format(s.avg_pnl) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="row g-3 mt-2">
+        <div class="col-md-6">
+            <div
+                class="p-3 rounded-4 bg-success-subtle border border-success-subtle d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="ag-chip-label text-success">Top Money Maker</span>
+                    <div class="h6 fw-bold mb-0">{{ report.appendix.metrics.sectoral_analysis.money_maker or 'N/A' }}
+                    </div>
+                </div>
+                <div class="fs-3">💰</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div
+                class="p-3 rounded-4 bg-danger-subtle border border-danger-subtle d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="ag-chip-label text-danger">Top Money Leaker</span>
+                    <div class="h6 fw-bold mb-0">{{ report.appendix.metrics.sectoral_analysis.money_leaker or 'N/A' }}
+                    </div>
+                </div>
+                <div class="fs-3">🩸</div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-ag-muted">No sectoral analysis available.</div>
+    {% endif %}
+</div>
